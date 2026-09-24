@@ -9,6 +9,13 @@ $ErrorActionPreference = 'Stop'
 $Repo   = 'Ali-mubaje/Exodus-Multi-Wallet'
 $Branch = 'main'
 
+# Action via $env:EMW_ACTION (irm | iex can't pass args). Empty = toggle.
+#   update    -> fetch latest and (re)install the sidebar
+#   install   -> install the sidebar
+#   uninstall -> remove the sidebar
+$Action = $env:EMW_ACTION
+if (-not $Action) { $Action = 'toggle' }
+
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host 'Node.js is required. Get it at https://nodejs.org/ and run this again.'
   return
@@ -24,14 +31,24 @@ try {
   $dir = Join-Path $tmp ((($Repo -split '/')[-1]) + "-$Branch")
   Set-Location $dir
 
-  # Toggle: uninstall if already installed, otherwise install.
-  $status = & node install.js status 2>$null | Out-String
-  if ($status -match 'sidebar installed') {
-    Write-Host 'Sidebar already installed -> removing it ...'
-    & node install.js uninstall
-  } else {
-    Write-Host 'Installing the sidebar ...'
-    & node install.js install
+  switch ($Action) {
+    'update' {
+      Write-Host 'Updating the sidebar to the latest version ...'
+      & node install.js install
+    }
+    'install' { & node install.js install }
+    'uninstall' { & node install.js uninstall }
+    default {
+      # Toggle: uninstall if already installed, otherwise install.
+      $status = & node install.js status 2>$null | Out-String
+      if ($status -match 'sidebar installed') {
+        Write-Host 'Sidebar already installed -> removing it ...'
+        & node install.js uninstall
+      } else {
+        Write-Host 'Installing the sidebar ...'
+        & node install.js install
+      }
+    }
   }
 } finally {
   Set-Location $env:TEMP

@@ -10,6 +10,12 @@ set -eu
 REPO="Ali-mubaje/Exodus-Multi-Wallet"
 BRANCH="main"
 
+# Action: no arg = toggle (install, or uninstall if already installed).
+#   update    -> fetch latest and (re)install the sidebar
+#   install   -> install the sidebar
+#   uninstall -> remove the sidebar
+ACTION="${1:-toggle}"
+
 command -v node >/dev/null 2>&1 || { echo "Node.js is required. Get it at https://nodejs.org/ and run this again."; exit 1; }
 
 TMP="$(mktemp -d)"
@@ -28,11 +34,25 @@ fi
 
 cd "$DIR"
 
-# Toggle: uninstall if already installed, otherwise install.
-if node install.js status 2>/dev/null | grep -q "sidebar installed"; then
-  echo "Sidebar already installed -> removing it ..."
-  node install.js uninstall
-else
-  echo "Installing the sidebar ..."
-  node install.js install
-fi
+case "$ACTION" in
+  update)
+    echo "Updating the sidebar to the latest version ..."
+    node install.js install
+    ;;
+  install)
+    node install.js install
+    ;;
+  uninstall)
+    node install.js uninstall
+    ;;
+  *)
+    # Toggle: uninstall if already installed, otherwise install.
+    if node install.js status 2>/dev/null | grep -q "sidebar installed"; then
+      echo "Sidebar already installed -> removing it ..."
+      node install.js uninstall
+    else
+      echo "Installing the sidebar ..."
+      node install.js install
+    fi
+    ;;
+esac

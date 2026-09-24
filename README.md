@@ -74,7 +74,22 @@ curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main
 > These fetch and run a script from this repository. That's convenient but powerful – only paste a
 > `curl … | sh` / `irm … | iex` command from a source you trust, and feel free to open
 > [`bootstrap.sh`](bootstrap.sh) / [`bootstrap.ps1`](bootstrap.ps1) first to see exactly what they do.
-> After an Exodus update, run the same command twice (uninstall, then install) or use `install` below.
+
+### Update to the latest version
+
+Fetches the newest version and re-installs it (also use this after an Exodus update). Quit Exodus first.
+
+**Windows (PowerShell):**
+
+```powershell
+$env:EMW_ACTION='update'; irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.ps1 | iex
+```
+
+**macOS / Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.sh | sh -s -- update
+```
 
 ---
 
