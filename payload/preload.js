@@ -161,8 +161,18 @@
 #xw-root .xw-btn.is-primary{height:48px;color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,var(--xw-grad-soft) border-box}
 #xw-root .xw-btn.is-primary:hover{background:linear-gradient(var(--xw-deep),var(--xw-deep)) padding-box,var(--xw-grad) border-box}
 #xw-root .xw-btn.is-primary svg{color:var(--xw-cyan)}
-#xw-root .xw-btn.is-copied{color:#fff;border:1px solid transparent;background:linear-gradient(90deg,#2fae7a,var(--xw-green))!important;transition:background .2s}
+#xw-root .xw-btn.is-copied{color:#fff;border:1px solid transparent;background:linear-gradient(90deg,#2fae7a,var(--xw-green))!important;transition:background .2s;animation:xw-glow .9s ease-out 1}
 #xw-root .xw-btn.is-copied .xw-btn-ico{display:inline-flex;animation:xw-pop .2s var(--xw-ease)}
+#xw-root .xw-btn{transition:color .2s,background .2s,border-color .2s,transform .1s}
+#xw-root .xw-btn:active{transform:scale(.98)}
+/* Kopier-Bestätigung: ein Lichtstrahl läuft zweimal um den Rand (Winkel per @property animiert) */
+#xw-root .xw-beam{position:relative;isolation:isolate}
+#xw-root .xw-beam::after{content:"";position:absolute;inset:-2px;border-radius:inherit;padding:3px;pointer-events:none;
+  background:conic-gradient(from var(--xw-beam),transparent 0deg 225deg,rgba(0,191,255,.45) 262deg,#00bfff 298deg,#fff 328deg,#9dffd6 346deg,transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  filter:drop-shadow(0 0 7px rgba(125,255,201,.95));animation:xw-beam 1.25s cubic-bezier(.45,.05,.35,1) 1 both}
+@keyframes xw-beam{0%{--xw-beam:0deg;opacity:0}8%{opacity:1}86%{opacity:1}100%{--xw-beam:720deg;opacity:0}}
+@keyframes xw-glow{from{box-shadow:0 0 0 0 rgba(58,210,159,.55)}to{box-shadow:0 0 0 12px rgba(58,210,159,0)}}
 #xw-root .xw-btn.is-danger{color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,linear-gradient(-90deg,rgba(255,77,106,.75),rgba(255,129,129,.55)) border-box}
 #xw-root .xw-btn.is-danger:hover{background:linear-gradient(rgba(255,77,106,.12),rgba(255,77,106,.12)) padding-box,linear-gradient(-90deg,#ff4d6a,#ff8181) border-box}
 #xw-root .xw-input::placeholder{color:rgba(255,255,255,.25)}
@@ -256,7 +266,37 @@
 #xw-root.xw-anim .xw-item{animation:xw-in .4s var(--xw-ease) both;animation-delay:calc(var(--xw-i,0) * 35ms + 90ms)}
 #xw-root.xw-anim .xw-sum{animation:xw-fade .4s ease both;animation-delay:60ms}
 #xw-root form:not(.xw-hide),#xw-root .xw-actions:not(.xw-hide){animation:xw-fade .25s ease both}
-@media (prefers-reduced-motion:reduce){#xw-root *,#xw-panel,#xw-backdrop{animation:none!important;transition:none!important}}
+@property --xw-beam{syntax:'<angle>';initial-value:0deg;inherits:false}
+
+/* Dezente Mikro-Animationen */
+@keyframes xw-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#xw-root .xw-notice.xw-in{animation:xw-rise .28s var(--xw-ease) both}
+#xw-root .xw-sheet.is-anim .xw-addr,#xw-root .xw-sheet.is-anim .xw-addr-group{animation:xw-rise .34s var(--xw-ease) both;animation-delay:calc(min(var(--xw-i,0),12) * 26ms + 70ms)}
+#xw-root .xw-menu-item{animation:xw-rise .2s var(--xw-ease) both;animation-delay:calc(var(--xw-i,0) * 16ms)}
+#xw-root form:not(.xw-hide){animation:xw-rise .26s var(--xw-ease) both}
+#xw-root .xw-chip{transition:color .15s,background .2s,border-color .2s,transform .1s}
+#xw-root .xw-icon{transition:opacity .1s,background .2s,color .2s,transform .1s}
+#xw-root .xw-more{transition:opacity .1s,background .2s,transform .1s}
+#xw-root .xw-chip:active,#xw-root .xw-icon:active,#xw-root .xw-more:active{transform:scale(.93)}
+#xw-root .xw-item .xw-avatar{transition:transform .25s var(--xw-ease)}
+#xw-root .xw-item:hover .xw-avatar{transform:scale(1.05)}
+#xw-root .xw-addr-copy svg{transition:transform .2s var(--xw-ease)}
+#xw-root .xw-addr.is-copied .xw-addr-copy svg{animation:xw-pop .22s var(--xw-ease)}
+
+/* Weniger Bewegung (Systemeinstellung): Gleiten/Skalieren werden zu sanften Überblendungen.
+   Die kurzen Rückmeldungen beim Kopieren (Lichtstrahl, Glühen) bleiben – das sind Farbeffekte. */
+@media (prefers-reduced-motion:reduce){
+  @keyframes xw-in{from{opacity:0}to{opacity:1}}
+  @keyframes xw-rise{from{opacity:0}to{opacity:1}}
+  @keyframes xw-pop{from{opacity:0}to{opacity:1}}
+  #xw-panel,#xw-root .xw-sheet{transform:none!important}
+  #xw-panel{opacity:0;transition:opacity .2s,visibility 0s .2s!important}
+  #xw-root.xw-open #xw-panel{opacity:1;transition:opacity .2s,visibility 0s!important}
+  #xw-root .xw-sheet{opacity:0;transition:opacity .2s,visibility 0s .2s!important}
+  #xw-root .xw-sheet.is-open{opacity:1;transition:opacity .2s,visibility 0s!important}
+  #xw-root .xw-btn:active,#xw-root .xw-chip:active,#xw-root .xw-icon:active,#xw-root .xw-more:active,#xw-toggle:active,
+  #xw-root .xw-item:hover .xw-avatar,#xw-root .xw-fast{transform:none!important}
+}
 `
 
   // -------------------------------------------------------------------------------------------
@@ -759,6 +799,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     function showNotice (text, kind) {
       notice.textContent = text
       notice.className = 'xw-notice' + (kind ? ' is-' + kind : '')
+      void notice.offsetWidth // Einblend-Animation auch bei direkt folgendem Hinweis neu starten
+      notice.classList.add('xw-in')
       clearTimeout(noticeTimer)
       noticeTimer = setTimeout(() => notice.classList.add('xw-hide'), kind === 'error' ? 12000 : 9000)
     }
@@ -952,6 +994,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if (menu && menuButton === button && !point) return closeMenu()
       closeMenu()
       const node = el('div', { class: 'xw-menu', role: 'menu' })
+      let itemIndex = 0
       for (const entry of menuEntries(w)) {
         if (entry === '-') { node.appendChild(el('div', { class: 'xw-menu-sep' })); continue }
         const [icon, text, run, extra] = entry
@@ -959,6 +1002,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           type: 'button',
           role: 'menuitem',
           class: 'xw-menu-item' + (extra ? ' ' + extra : ''),
+          style: `--xw-i:${itemIndex++}`, // leicht gestaffeltes Einblenden
           html: icon(16),
           onclick: (e) => { e.stopPropagation(); if (!run) return; closeMenu(); run() },
         }, el('span', { text })))
@@ -1152,6 +1196,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetSub.textContent = res.updatedAt ? T.addrSaved(ago(res.updatedAt)) : ''
         if (sheetExport) sheetSelected = new Set(sheetPortfolios().map(([account]) => account)) // Start: alle
         renderAddresses()
+        animateSheet()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
@@ -1185,9 +1230,20 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetAddresses = res.addresses
         sheetSelected = new Set(sheetWallets().map(([id]) => id)) // Start: alle Wallets
         renderAddresses()
+        animateSheet()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
+    }
+
+    // Zeilen der Adressliste nur beim Öffnen gestaffelt einblenden – nicht bei jedem Filter-Tastendruck
+    let sheetAnimTimer = null
+    function animateSheet () {
+      sheet.classList.remove('is-anim')
+      void sheet.offsetWidth
+      sheet.classList.add('is-anim')
+      clearTimeout(sheetAnimTimer)
+      sheetAnimTimer = setTimeout(() => sheet.classList.remove('is-anim'), 1100)
     }
 
     function closeSheet () {
@@ -1289,6 +1345,16 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return out
     }
 
+    // Lichtstrahl um ein Element laufen lassen. Klasse kurz entfernen + Reflow, damit die Animation
+    // auch bei schnellem Doppelklick von vorn startet.
+    function beam (node) {
+      node.classList.remove('xw-beam')
+      void node.offsetWidth
+      node.classList.add('xw-beam')
+      clearTimeout(node.xwBeamTimer)
+      node.xwBeamTimer = setTimeout(() => node.classList.remove('xw-beam'), 1400)
+    }
+
     let exportDoneTimer = null
     async function doExport () {
       const list = exportMatches()
@@ -1300,6 +1366,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         exportBtn.classList.add('is-copied')
         exportBtn.innerHTML = ''
         exportBtn.append(el('span', { class: 'xw-btn-ico', html: ICON.check(16) }), el('span', { text: T.exportBtnDone(list.length) }))
+        beam(exportBtn)
         clearTimeout(exportDoneTimer)
         exportDoneTimer = setTimeout(() => {
           exportBtn.classList.remove('is-copied')
@@ -1357,6 +1424,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           nodes.push(addressRow(a, sheetCross && multiPortfolioWallets.has(a.walletId)))
         }
         addrList.replaceChildren(...nodes)
+        nodes.forEach((n, i) => n.style.setProperty('--xw-i', i))
         return
       }
       exportBar.classList.add('xw-hide')
@@ -1389,6 +1457,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         nodes.push(addressRow(a))
       }
       addrList.replaceChildren(...nodes)
+      nodes.forEach((n, i) => n.style.setProperty('--xw-i', i))
     }
 
     // showPortfolio: Portfolio-Namen zusätzlich pro Zeile zeigen (z. B. im wallet-übergreifenden Export)
@@ -1409,6 +1478,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           const res = await call('copyAddress', wid, a.asset, a.account)
           row.classList.add('is-copied')
           row.querySelector('.xw-addr-copy').innerHTML = ICON.check(16)
+          beam(row)
           showNotice(multiPortfolio ? T.addrCopiedFrom(res.ticker, a.portfolio || a.account) : T.addrCopied(res.ticker), 'ok')
           setTimeout(() => {
             row.classList.remove('is-copied')
