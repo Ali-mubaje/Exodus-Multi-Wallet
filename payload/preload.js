@@ -161,6 +161,8 @@
 #xw-root .xw-btn.is-primary{height:48px;color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,var(--xw-grad-soft) border-box}
 #xw-root .xw-btn.is-primary:hover{background:linear-gradient(var(--xw-deep),var(--xw-deep)) padding-box,var(--xw-grad) border-box}
 #xw-root .xw-btn.is-primary svg{color:var(--xw-cyan)}
+#xw-root .xw-btn.is-copied{color:#fff;border:1px solid transparent;background:linear-gradient(90deg,#2fae7a,var(--xw-green))!important;transition:background .2s}
+#xw-root .xw-btn.is-copied .xw-btn-ico{display:inline-flex;animation:xw-pop .2s var(--xw-ease)}
 #xw-root .xw-btn.is-danger{color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,linear-gradient(-90deg,rgba(255,77,106,.75),rgba(255,129,129,.55)) border-box}
 #xw-root .xw-btn.is-danger:hover{background:linear-gradient(rgba(255,77,106,.12),rgba(255,77,106,.12)) padding-box,linear-gradient(-90deg,#ff4d6a,#ff8181) border-box}
 #xw-root .xw-input::placeholder{color:rgba(255,255,255,.25)}
@@ -331,6 +333,7 @@
       exportAll: 'All',
       exportHint: 'Pick the portfolios (and optionally a coin via search). Copies every matching address, one per line.',
       exportBtn: (n) => `Copy ${n} address${n === 1 ? '' : 'es'}`,
+      exportBtnDone: (n) => `Copied ${n} address${n === 1 ? '' : 'es'}`,
       exportCopied: (n) => `${n} address${n === 1 ? '' : 'es'} copied (one per line).`,
       exportNone: 'No addresses match your selection.',
       exportAllWallets: 'Export addresses · all wallets',
@@ -450,6 +453,7 @@
       exportAll: 'Alle',
       exportHint: 'Wähle die Portfolios (optional per Suche einen Coin). Kopiert alle passenden Adressen, eine pro Zeile.',
       exportBtn: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopieren`,
+      exportBtnDone: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopiert`,
       exportCopied: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopiert (eine pro Zeile).`,
       exportNone: 'Keine Adresse passt zur Auswahl.',
       exportAllWallets: 'Adressen exportieren · alle Wallets',
@@ -1285,12 +1289,22 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return out
     }
 
+    let exportDoneTimer = null
     async function doExport () {
       const list = exportMatches()
       if (!list.length) return showNotice(T.exportNone, 'error')
       try {
         await call('copyText', list.map((a) => a.address).join('\n'))
         showNotice(T.exportCopied(list.length), 'ok')
+        // Knopf sichtbar auf "kopiert" umstellen, kurz halten, dann zurücksetzen
+        exportBtn.classList.add('is-copied')
+        exportBtn.innerHTML = ''
+        exportBtn.append(el('span', { class: 'xw-btn-ico', html: ICON.check(16) }), el('span', { text: T.exportBtnDone(list.length) }))
+        clearTimeout(exportDoneTimer)
+        exportDoneTimer = setTimeout(() => {
+          exportBtn.classList.remove('is-copied')
+          exportBtn.textContent = T.exportBtn(exportMatches().length)
+        }, 1900)
       } catch (e) {
         fail(e)
       }
