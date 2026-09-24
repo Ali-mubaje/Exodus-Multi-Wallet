@@ -151,10 +151,16 @@ Windows-only conveniences that simply don't appear elsewhere:
 - **macOS code signing:** Exodus is a signed/notarized app, so changing `app.asar` makes macOS report
   *“Exodus is damaged and can’t be opened.”* The installer fixes this automatically by **re-signing the
   app ad-hoc** after patching (this replaces Apple’s signature with a local one; reinstalling Exodus
-  from the official DMG restores the original). If the automatic step ever fails, run once in Terminal:
+  from the official DMG restores the original). If the automatic step ever fails, quit Exodus and run
+  once in Terminal (with `sudo`, and adjust the path if Exodus is not in `/Applications`):
   ```sh
-  codesign --force --deep --sign - /Applications/Exodus.app
-  xattr -cr /Applications/Exodus.app
+  sudo xattr -rd com.apple.quarantine /Applications/Exodus.app
+  sudo codesign --force --deep --sign - /Applications/Exodus.app
+  ```
+  Then open it the first time via **right-click → Open** (or System Settings → Privacy & Security →
+  “Open Anyway”). To check the quarantine flag is gone, this should print nothing:
+  ```sh
+  xattr -r /Applications/Exodus.app | grep quarantine
   ```
 - Everything else – switching, balances, addresses, rename, delete, start wallet, custom pictures –
   works on all platforms.

@@ -228,16 +228,29 @@ function macAppBundle (asarPath) {
 function resignMac (asarPath) {
   if (process.platform !== 'darwin') return
   const appBundle = macAppBundle(asarPath)
-  if (!appBundle) { log('WARNING: could not locate the .app bundle to re-sign. macOS may say Exodus is "damaged".'); return }
-  try {
-    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appBundle], { stdio: 'ignore' })
-    try { execFileSync('xattr', ['-dr', 'com.apple.quarantine', appBundle], { stdio: 'ignore' }) } catch (e) {}
-    log('Re-signed Exodus (ad-hoc) so macOS will open the patched app.')
-  } catch (e) {
-    log('WARNING: could not re-sign Exodus automatically. macOS may say the app is "damaged".')
-    log('Fix it once in Terminal (you can copy/paste both lines):')
-    log(`  codesign --force --deep --sign - "${appBundle}"`)
-    log(`  xattr -cr "${appBundle}"`)
+  if (!appBundle) { log('WARNING: could not locate the .app bundle. macOS may block the patched app.'); return }
+
+  // 1) Clear quarantine – this is what causes "Exodus was downloaded on an unknown date".
+  let unquarantined = false
+  for (const args of [['-cr', appBundle], ['-rd', 'com.apple.quarantine', appBundle]]) {
+    try { execFileSync('xattr', args, { stdio: 'ignore' }); unquarantined = true; break } catch (e) {}
+  }
+
+  // 2) Ad-hoc re-sign – required on Apple Silicon so the app runs at all after app.asar changed.
+  let signed = false
+  for (const args of [['--force', '--deep', '--sign', '-', appBundle], ['--force', '--sign', '-', appBundle]]) {
+    try { execFileSync('codesign', args, { stdio: 'ignore' }); signed = true; break } catch (e) {}
+  }
+
+  if (signed && unquarantined) {
+    log('Cleared quarantine and re-signed Exodus (ad-hoc) so macOS will open it.')
+  } else {
+    log('WARNING: could not fully prepare Exodus for macOS automatically.')
+    log('Run these once in Terminal, then open Exodus:')
+    log(`  sudo xattr -cr "${appBundle}"`)
+    log(`  sudo codesign --force --deep --sign - "${appBundle}"`)
+    log('If macOS still blocks it: in Finder, right-click Exodus -> Open, then confirm once')
+    log('(or System Settings -> Privacy & Security -> "Open Anyway").')
   }
 }
 
