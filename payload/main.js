@@ -961,6 +961,19 @@ const api = {
     return true
   },
 
+  // Cached addresses across ALL wallets, each tagged with its wallet, for the cross-wallet export
+  async allAddresses (event) {
+    const out = []
+    for (const w of walletDirs()) {
+      const label = w.isStandard ? standardLabel() : w.name
+      const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
+      for (const a of (Array.isArray(cache.addresses) ? cache.addresses : [])) {
+        out.push({ ...a, icon: iconFor(a.asset), walletId: w.id, wallet: label })
+      }
+    }
+    return { addresses: out }
+  },
+
   async pickAvatar (event, id) {
     const w = findWallet(id)
     const options = {

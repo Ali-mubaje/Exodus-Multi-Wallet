@@ -333,6 +333,9 @@
       exportBtn: (n) => `Copy ${n} address${n === 1 ? '' : 'es'}`,
       exportCopied: (n) => `${n} address${n === 1 ? '' : 'es'} copied (one per line).`,
       exportNone: 'No addresses match your selection.',
+      exportAllWallets: 'Export addresses · all wallets',
+      exportWalletsHint: 'Pick the wallets (and optionally a coin via search). Copies every matching address across them, one per line.',
+      exportGlobalTitle: 'Export addresses across all wallets',
       mBackup: 'Show 12 words',
       mStart: 'Open when Exodus starts',
       mStartActive: 'Opens when Exodus starts',
@@ -449,6 +452,9 @@
       exportBtn: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopieren`,
       exportCopied: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopiert (eine pro Zeile).`,
       exportNone: 'Keine Adresse passt zur Auswahl.',
+      exportAllWallets: 'Adressen exportieren · alle Wallets',
+      exportWalletsHint: 'Wähle die Wallets (optional per Suche einen Coin). Kopiert alle passenden Adressen wallet-übergreifend, eine pro Zeile.',
+      exportGlobalTitle: 'Adressen über alle Wallets exportieren',
       mBackup: '12 Wörter anzeigen',
       mStart: 'Beim Exodus-Start öffnen',
       mStartActive: 'Öffnet beim Exodus-Start',
@@ -633,8 +639,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let sheetPortfolioNames = []
     // Gewähltes Portfolio (account-Name wie "exodus_1") je Wallet merken – null = alle
     const sheetPortfolioByWallet = new Map()
-    // Export-Modus: Mehrfachauswahl von Portfolios, dann alle Adressen als Liste kopieren
+    // Export-Modus: Mehrfachauswahl, dann alle Adressen als Liste kopieren.
+    // sheetCross = wallet-übergreifend (Auswahl = Wallets); sonst pro Wallet (Auswahl = Portfolios).
     let sheetExport = false
+    let sheetCross = false
     let sheetSelected = new Set()
 
     const panel = el('aside', { id: 'xw-panel', tabindex: '-1', 'aria-label': 'Wallets' },
@@ -642,6 +650,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         el('div', { class: 'xw-head-text' },
           el('div', { class: 'xw-kicker', text: 'Exodus' }),
           el('div', { class: 'xw-title', text: 'Wallets' })),
+        label(el('button', { type: 'button', class: 'xw-icon', html: ICON.list(18), onclick: () => openCrossExport() }), 'exportGlobalTitle', 'title'),
         eyeBtn,
         label(el('button', { type: 'button', class: 'xw-icon', html: ICON.close(18), onclick: () => closePanel() }), 'close', 'title')),
       sumBox,
@@ -1117,10 +1126,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheetAddresses = []
       sheetPortfolioNames = []
       sheetExport = !!exportMode
+      sheetCross = false
       sheetSelected = new Set()
       addrChips.classList.add('xw-hide')
       exportBar.classList.add('xw-hide')
       exportHint.classList.toggle('xw-hide', !sheetExport)
+      exportHint.textContent = T.exportHint
       sheetNote.classList.toggle('xw-hide', sheetExport)
       sheetTitle.textContent = sheetExport ? T.mMultiCopy.replace(/\s*…$/, '') + ' · ' + labelOf(w) : T.addrTitle(labelOf(w))
       sheetSub.textContent = ''
@@ -1131,7 +1142,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       setTimeout(() => addrFilter.focus(), 120)
       try {
         const res = await call('addresses', w.id)
-        if (sheetWallet !== w) return
+        if (sheetWallet !== w || sheetCross) return
         sheetAddresses = res.addresses
         sheetPortfolioNames = Array.isArray(res.portfolioNames) ? res.portfolioNames : []
         sheetSub.textContent = res.updatedAt ? T.addrSaved(ago(res.updatedAt)) : ''
@@ -1142,11 +1153,56 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
     }
 
+    // Wallet-übergreifender Export: Auswahl = Wallets, kopiert deren Adressen als eine Liste
+    async function openCrossExport () {
+      closeMenu()
+      sheetWallet = null
+      sheetAddresses = []
+      sheetPortfolioNames = []
+      sheetExport = true
+      sheetCross = true
+      sheetSelected = new Set()
+      addrChips.classList.add('xw-hide')
+      exportBar.classList.add('xw-hide')
+      exportHint.classList.remove('xw-hide')
+      exportHint.textContent = T.exportWalletsHint
+      sheetNote.classList.add('xw-hide')
+      sheetTitle.textContent = T.exportAllWallets
+      sheetSub.textContent = ''
+      addrFilter.value = ''
+      addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
+      sheet.classList.add('is-open')
+      sheet.setAttribute('aria-hidden', 'false')
+      if (!open) openPanel()
+      setTimeout(() => addrFilter.focus(), 120)
+      try {
+        const res = await call('allAddresses')
+        if (!sheetCross) return
+        sheetAddresses = res.addresses
+        sheetSelected = new Set(sheetWallets().map(([id]) => id)) // Start: alle Wallets
+        renderAddresses()
+      } catch (e) {
+        addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
+      }
+    }
+
     function closeSheet () {
       sheetWallet = null
+      sheetCross = false
       sheet.classList.remove('is-open')
       sheet.setAttribute('aria-hidden', 'true')
     }
+
+    // Wallets im Datenbestand (für den wallet-übergreifenden Export), Reihenfolge wie geliefert
+    function sheetWallets () {
+      const seen = new Map()
+      for (const a of sheetAddresses) if (!seen.has(a.walletId)) seen.set(a.walletId, a.wallet || a.walletId)
+      return [...seen.entries()]
+    }
+
+    // Auswahl-Schlüssel je Adresse: Wallet-übergreifend die Wallet, sonst das Portfolio
+    const groupKey = (a) => (sheetCross ? a.walletId : a.account)
+    const exportGroups = () => (sheetCross ? sheetWallets() : sheetPortfolios())
 
     // Portfolios in der Reihenfolge von Exodus (exodus_0, exodus_1, …) mit ihrem Anzeigenamen. Portfolios,
     // die Exodus kennt, zu denen aber noch keine Adressen gespeichert sind, bekommen den Schlüssel "name:<Name>"
@@ -1169,24 +1225,26 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
 
       if (sheetExport) {
-        const allOn = portfolios.length > 0 && portfolios.every(([account]) => sheetSelected.has(account))
+        // groups: [key, label] – Portfolios (pro Wallet) oder Wallets (übergreifend)
+        const groups = portfolios
+        const allOn = groups.length > 0 && groups.every(([key]) => sheetSelected.has(key))
         const allChip = el('button', {
           type: 'button',
           class: 'xw-chip' + (allOn ? ' is-active' : ''),
           text: T.exportAll,
           onclick: () => {
             if (allOn) sheetSelected.clear()
-            else sheetSelected = new Set(portfolios.map(([account]) => account))
+            else sheetSelected = new Set(groups.map(([key]) => key))
             renderAddresses()
           },
         })
-        const chips = portfolios.map(([account, name]) => el('button', {
+        const chips = groups.map(([key, name]) => el('button', {
           type: 'button',
-          class: 'xw-chip' + (sheetSelected.has(account) ? ' is-active' : ''),
+          class: 'xw-chip' + (sheetSelected.has(key) ? ' is-active' : ''),
           text: name,
           onclick: () => {
-            if (sheetSelected.has(account)) sheetSelected.delete(account)
-            else sheetSelected.add(account)
+            if (sheetSelected.has(key)) sheetSelected.delete(key)
+            else sheetSelected.add(key)
             renderAddresses()
           },
         }))
@@ -1218,7 +1276,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       const seen = new Set()
       const out = []
       for (const a of sheetAddresses) {
-        if (!sheetSelected.has(a.account)) continue
+        if (!sheetSelected.has(groupKey(a))) continue
         if (q && !a.label.toLowerCase().includes(q) && !a.ticker.toLowerCase().includes(q) && !a.asset.toLowerCase().includes(q)) continue
         if (seen.has(a.address)) continue
         seen.add(a.address)
@@ -1239,18 +1297,18 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     function renderAddresses () {
-      if (!sheetWallet) return
+      if (!sheetWallet && !sheetCross) return
       if (!sheetAddresses.length) {
         addrChips.classList.add('xw-hide')
         exportBar.classList.add('xw-hide')
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.addrEmpty }))
         return
       }
-      const portfolios = sheetPortfolios()
 
-      // Export-Modus: nach ausgewählten Portfolios filtern, Kopieren-Knopf mit Anzahl anzeigen
+      // Export-Modus: nach Auswahl filtern (Portfolios bzw. Wallets), Kopieren-Knopf mit Anzahl
       if (sheetExport) {
-        renderChips(portfolios, null)
+        const groups = exportGroups()
+        renderChips(groups, null)
         const list = exportMatches()
         exportBtn.textContent = T.exportBtn(list.length)
         exportBtn.disabled = !list.length
@@ -1259,21 +1317,36 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.exportNone }))
           return
         }
-        const order = new Map(portfolios.map(([account], i) => [account, i]))
-        const rows = list.slice().sort((x, y) => order.get(x.account) - order.get(y.account))
-        const nodes = []
-        let lastAcc = null
-        for (const a of rows) {
-          if (a.account !== lastAcc) {
-            nodes.push(el('div', { class: 'xw-addr-group xw-label', text: a.portfolio || a.account }))
-            lastAcc = a.account
+        const order = new Map(groups.map(([key], i) => [key, i]))
+        // Übergreifend: nach Wallet, dann Portfolio; sonst nach Portfolio
+        const rows = list.slice().sort((x, y) =>
+          (order.get(groupKey(x)) - order.get(groupKey(y))) ||
+          x.account.localeCompare(y.account, 'en', { numeric: true }))
+        // Wallets mit mehreren Portfolios: Portfolio pro Zeile zeigen
+        const multiPortfolioWallets = new Set()
+        if (sheetCross) {
+          const byWallet = new Map()
+          for (const a of sheetAddresses) {
+            if (!byWallet.has(a.walletId)) byWallet.set(a.walletId, new Set())
+            byWallet.get(a.walletId).add(a.account)
           }
-          nodes.push(addressRow(a))
+          for (const [id, accs] of byWallet) if (accs.size > 1) multiPortfolioWallets.add(id)
+        }
+        const nodes = []
+        let lastKey = null
+        for (const a of rows) {
+          const k = groupKey(a)
+          if (k !== lastKey) {
+            nodes.push(el('div', { class: 'xw-addr-group xw-label', text: sheetCross ? a.wallet : (a.portfolio || a.account) }))
+            lastKey = k
+          }
+          nodes.push(addressRow(a, sheetCross && multiPortfolioWallets.has(a.walletId)))
         }
         addrList.replaceChildren(...nodes)
         return
       }
       exportBar.classList.add('xw-hide')
+      const portfolios = sheetPortfolios()
 
       let selected = sheetPortfolioByWallet.get(sheetWallet.id) || null
       if (selected && !portfolios.some(([account]) => account === selected)) selected = null
@@ -1304,20 +1377,22 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       addrList.replaceChildren(...nodes)
     }
 
-    // Portfolio steht in der Gruppen-Überschrift bzw. im gewählten Tab – nicht noch einmal pro Zeile
-    function addressRow (a) {
-      const multiPortfolio = sheetPortfolios().length > 1
+    // showPortfolio: Portfolio-Namen zusätzlich pro Zeile zeigen (z. B. im wallet-übergreifenden Export)
+    function addressRow (a, showPortfolio) {
+      const multiPortfolio = showPortfolio !== undefined ? showPortfolio : sheetPortfolios().length > 1
       const row = el('div', { class: 'xw-addr', role: 'button', tabindex: '0', title: a.address },
         coinIcon(a),
         el('div', { class: 'xw-addr-body' },
           el('div', { class: 'xw-addr-name' },
             el('span', { text: a.label }),
-            el('span', { class: 'xw-addr-ticker', text: a.ticker })),
+            el('span', { class: 'xw-addr-ticker', text: a.ticker }),
+            showPortfolio ? el('span', { class: 'xw-addr-port', text: a.portfolio || a.account }) : null),
           el('div', { class: 'xw-addr-text', text: a.address })),
         el('span', { class: 'xw-addr-copy', html: ICON.copy(16) }))
       const copy = async () => {
         try {
-          const res = await call('copyAddress', sheetWallet.id, a.asset, a.account)
+          const wid = a.walletId || (sheetWallet && sheetWallet.id)
+          const res = await call('copyAddress', wid, a.asset, a.account)
           row.classList.add('is-copied')
           row.querySelector('.xw-addr-copy').innerHTML = ICON.check(16)
           showNotice(multiPortfolio ? T.addrCopiedFrom(res.ticker, a.portfolio || a.account) : T.addrCopied(res.ticker), 'ok')

@@ -33,7 +33,8 @@ work but not yet tested against a specific version.
 - **Copy addresses without opening** – receive addresses for all coins, with a coin search and
   **portfolio tabs**; with several portfolios you copy the address of the right one.
 - **Bulk export** – *Export addresses …* lets you multi-select portfolios (and optionally filter by
-  coin) and copies every matching address to the clipboard, **one address per line**.
+  coin) and copies every matching address to the clipboard, **one address per line**. The export icon in
+  the header does the same **across all wallets** – pick which wallets to include and export them at once.
 - **Show 12 words** – takes you to Exodus' own backup screen (Exodus asks for the password there).
 - **Set a start wallet** – this wallet opens when you launch Exodus normally.
 - **Rename** – including open wallets (they are closed for it and optionally reopened).
