@@ -20,7 +20,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
 
-const VERSION = '1.0.0'
+const VERSION = '1.0.2'
 const TAG = '[exodus-wallets]'
 const PRELOAD = path.join(__dirname, 'preload.js')
 

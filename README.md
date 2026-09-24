@@ -9,6 +9,8 @@ gradient. It automatically picks up the active Exodus theme as well as the langu
 
 > **In short:** a wallet switcher that looks and feels like it shipped with Exodus.
 
+**Version 1.0.2 · built and tested for Exodus 26.8.27 (Windows, macOS, Linux).**
+
 <p align="center">
   <img src="docs/images/sidebar.png" width="330" alt="Wallet sidebar with combined total and wallet list">
 </p>
@@ -21,6 +23,8 @@ gradient. It automatically picks up the active Exodus theme as well as the langu
   each with its own 12-word phrase.
 - **One-click switching** – open a wallet, jump to an already-running window, or *Switch* to close the
   current wallet and open another.
+- **Several wallets open at once** – each wallet runs in its own Exodus window/process, so you can keep
+  multiple wallets open side by side; the sidebar marks which ones are currently running.
 - **Combined total up top** – the value of all wallets together; with mixed currencies shown as
   subtotals (e.g. `$12,330.19 + £150.14`; no online exchange-rate conversion).
 - **Balances without opening** – every running window saves its last fiat balance every 20 s, so the
@@ -196,6 +200,12 @@ stays byte for byte identical; the original is kept as `app.asar.orig`.
 More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
+
+## Built with AI
+
+This project was created **100% with AI** (Anthropic's Claude). All code, the installer and this
+documentation were AI-generated. Review the source before running it, especially since it modifies a
+crypto wallet app – and always keep your 12-word phrases backed up.
 
 ## Disclaimer
 

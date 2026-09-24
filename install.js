@@ -34,6 +34,9 @@ const TARGET_DIR = ['src', 'app', 'wallet-switcher']
 const MARKER = '/*exodus-wallets-sidebar*/'
 const BLOCK_SIZE = 4 * 1024 * 1024
 
+// The Exodus version this add-on was built and tested against.
+const TESTED_EXODUS = '26.8.27'
+
 const log = (...a) => console.log(...a)
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex')
 
@@ -156,6 +159,19 @@ function asarPathFor (appDir) {
   return path.join(appDir, 'resources', 'app.asar')
 }
 
+// Read Exodus' own version from package.json inside the asar (works on every platform). Prefers the
+// untouched backup if present, so the version stays readable even after patching.
+function exodusVersionFromAsar (asarPath) {
+  const file = fs.existsSync(asarPath + '.orig') ? asarPath + '.orig' : asarPath
+  try {
+    const src = readAsar(file)
+    const pkg = JSON.parse(readEntry(src, getEntry(src.header, ['package.json'])).toString('utf8'))
+    return typeof pkg.version === 'string' ? pkg.version : null
+  } catch (e) {
+    return null
+  }
+}
+
 // Every directory that could hold an Exodus app.asar, newest first, across all platforms.
 function installedAppDirs () {
   const dirs = []
@@ -214,6 +230,18 @@ function install (appDir, opts = {}) {
   const backupPath = asarPath + '.orig'
   if (!fs.existsSync(asarPath) && !fs.existsSync(backupPath)) throw new Error(`Not found: ${asarPath}`)
   if (exodusRunning()) throw new Error('Exodus is still running. Please quit Exodus completely and try again.')
+
+  // Is a suitable Exodus version installed? Warn on a mismatch, but don't block – newer versions may
+  // work, and we don't want to lock people out. This is the "is a suitable Exodus here?" check.
+  const exodusVer = exodusVersionFromAsar(asarPath)
+  if (!exodusVer) {
+    log(`Note: could not read the Exodus version. This add-on was built and tested for Exodus ${TESTED_EXODUS}.`)
+  } else if (exodusVer !== TESTED_EXODUS) {
+    log(`Note: found Exodus ${exodusVer}, but this add-on was built and tested for ${TESTED_EXODUS}.`)
+    log('      It may still work. If the sidebar misbehaves, this version difference is the first thing to check.')
+  } else {
+    log(`Found Exodus ${exodusVer} (matches the tested version).`)
+  }
 
   const payload = PAYLOAD_FILES.map((name) => ({ name, buf: fs.readFileSync(path.join(PAYLOAD_DIR, name)) }))
   if (opts.testHook) payload.push({ name: 'selftest.js', buf: fs.readFileSync(opts.testHook) })
@@ -334,8 +362,10 @@ function status (appDir) {
       }
       if (fs.existsSync(asarPath + '.orig')) state += ', backup present'
     }
+    const ver = exodusVersionFromAsar(asarPath)
+    const verNote = ver ? `Exodus ${ver}${ver === TESTED_EXODUS ? '' : ` (tested: ${TESTED_EXODUS})`} – ` : ''
     const active = path.resolve(dir) === path.resolve(appDir) ? '  <- will be used' : ''
-    log(`${dir}: ${state}${active}`)
+    log(`${dir}: ${verNote}${state}${active}`)
   }
 }
 
