@@ -60,6 +60,7 @@
     image: svg('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'),
     reset: svg('<path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/>'),
     trash: svg('<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>'),
+    list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
   }
 
   // Farben kommen aus Exodus' eigenen Theme-Variablen (exodus.css, :root/.exodus-theme-*), damit die
@@ -244,6 +245,8 @@
 #xw-root .xw-addr:hover .xw-addr-copy{opacity:1;color:var(--xw-cyan)}
 #xw-root .xw-addr.is-copied .xw-addr-copy{opacity:1;color:var(--xw-green)}
 #xw-root .xw-sheet-note{flex:none;padding:10px 24px 18px;font-size:11px;color:var(--xw-faint)}
+#xw-root .xw-sheet-bar{flex:none;padding:10px 24px 16px}
+#xw-root .xw-sheet-bar .xw-btn{margin:0}
 @keyframes xw-pop{from{opacity:0;transform:scale(.96) translateY(-4px)}to{opacity:1;transform:none}}
 
 @keyframes xw-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
@@ -324,6 +327,12 @@
       mSwitch: 'Switch to this wallet',
       mClose: 'Close wallet',
       mCopy: 'Copy address …',
+      mMultiCopy: 'Export addresses …',
+      exportAll: 'All',
+      exportHint: 'Pick the portfolios (and optionally a coin via search). Copies every matching address, one per line.',
+      exportBtn: (n) => `Copy ${n} address${n === 1 ? '' : 'es'}`,
+      exportCopied: (n) => `${n} address${n === 1 ? '' : 'es'} copied (one per line).`,
+      exportNone: 'No addresses match your selection.',
       mBackup: 'Show 12 words',
       mStart: 'Open when Exodus starts',
       mStartActive: 'Opens when Exodus starts',
@@ -434,6 +443,12 @@
       mSwitch: 'Zu dieser Wallet wechseln',
       mClose: 'Wallet schließen',
       mCopy: 'Adresse kopieren …',
+      mMultiCopy: 'Adressen exportieren …',
+      exportAll: 'Alle',
+      exportHint: 'Wähle die Portfolios (optional per Suche einen Coin). Kopiert alle passenden Adressen, eine pro Zeile.',
+      exportBtn: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopieren`,
+      exportCopied: (n) => `${n} Adresse${n === 1 ? '' : 'n'} kopiert (eine pro Zeile).`,
+      exportNone: 'Keine Adresse passt zur Auswahl.',
       mBackup: '12 Wörter anzeigen',
       mStart: 'Beim Exodus-Start öffnen',
       mStartActive: 'Öffnet beim Exodus-Start',
@@ -604,17 +619,23 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     const addrList = el('div', { class: 'xw-addr-list' })
     const addrChips = el('div', { class: 'xw-chips xw-hide', role: 'tablist' })
     label(addrChips, 'addrPortfolios', 'aria-label')
+    const exportHint = label(el('div', { class: 'xw-sheet-sub xw-hide' }), 'exportHint')
+    const exportBtn = el('button', { type: 'button', class: 'xw-btn is-primary', onclick: () => doExport() })
+    const exportBar = el('div', { class: 'xw-sheet-bar xw-hide' }, exportBtn)
+    const sheetNote = label(el('div', { class: 'xw-sheet-note' }), 'addrNote')
     const sheet = el('div', { class: 'xw-sheet', 'aria-hidden': 'true' },
       el('div', { class: 'xw-sheet-head' },
         label(el('button', { type: 'button', class: 'xw-icon', html: ICON.back(18), onclick: () => closeSheet() }), 'back', 'title'),
         sheetTitle),
-      sheetSub, addrFilter, addrChips, addrList,
-      label(el('div', { class: 'xw-sheet-note' }), 'addrNote'))
+      sheetSub, addrFilter, exportHint, addrChips, addrList, exportBar, sheetNote)
     let sheetWallet = null
     let sheetAddresses = []
     let sheetPortfolioNames = []
     // Gewähltes Portfolio (account-Name wie "exodus_1") je Wallet merken – null = alle
     const sheetPortfolioByWallet = new Map()
+    // Export-Modus: Mehrfachauswahl von Portfolios, dann alle Adressen als Liste kopieren
+    let sheetExport = false
+    let sheetSelected = new Set()
 
     const panel = el('aside', { id: 'xw-panel', tabindex: '-1', 'aria-label': 'Wallets' },
       el('div', { class: 'xw-head' },
@@ -890,6 +911,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if (w.hasWallet) {
         entries.push('-')
         entries.push([ICON.copy, T.mCopy, () => openSheet(w)])
+        entries.push([ICON.list, T.mMultiCopy, () => openSheet(w, true)])
         entries.push([ICON.key, T.mBackup, () => showBackup(w)])
       }
       entries.push('-')
@@ -1090,12 +1112,17 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return img
     }
 
-    async function openSheet (w) {
+    async function openSheet (w, exportMode) {
       sheetWallet = w
       sheetAddresses = []
       sheetPortfolioNames = []
+      sheetExport = !!exportMode
+      sheetSelected = new Set()
       addrChips.classList.add('xw-hide')
-      sheetTitle.textContent = T.addrTitle(labelOf(w))
+      exportBar.classList.add('xw-hide')
+      exportHint.classList.toggle('xw-hide', !sheetExport)
+      sheetNote.classList.toggle('xw-hide', sheetExport)
+      sheetTitle.textContent = sheetExport ? T.mMultiCopy.replace(/\s*…$/, '') + ' · ' + labelOf(w) : T.addrTitle(labelOf(w))
       sheetSub.textContent = ''
       addrFilter.value = ''
       addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
@@ -1108,6 +1135,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetAddresses = res.addresses
         sheetPortfolioNames = Array.isArray(res.portfolioNames) ? res.portfolioNames : []
         sheetSub.textContent = res.updatedAt ? T.addrSaved(ago(res.updatedAt)) : ''
+        if (sheetExport) sheetSelected = new Set(sheetPortfolios().map(([account]) => account)) // Start: alle
         renderAddresses()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
@@ -1133,10 +1161,40 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     function renderChips (portfolios, selected) {
-      if (portfolios.length < 2) {
+      // Bei einem einzelnen Portfolio im normalen Modus sind Tabs überflüssig; im Export-Modus zeigen
+      // wir sie trotzdem (Mehrfachauswahl inkl. „Alle“-Umschalter).
+      if (portfolios.length < 2 && !sheetExport) {
         addrChips.classList.add('xw-hide')
         return
       }
+
+      if (sheetExport) {
+        const allOn = portfolios.length > 0 && portfolios.every(([account]) => sheetSelected.has(account))
+        const allChip = el('button', {
+          type: 'button',
+          class: 'xw-chip' + (allOn ? ' is-active' : ''),
+          text: T.exportAll,
+          onclick: () => {
+            if (allOn) sheetSelected.clear()
+            else sheetSelected = new Set(portfolios.map(([account]) => account))
+            renderAddresses()
+          },
+        })
+        const chips = portfolios.map(([account, name]) => el('button', {
+          type: 'button',
+          class: 'xw-chip' + (sheetSelected.has(account) ? ' is-active' : ''),
+          text: name,
+          onclick: () => {
+            if (sheetSelected.has(account)) sheetSelected.delete(account)
+            else sheetSelected.add(account)
+            renderAddresses()
+          },
+        }))
+        addrChips.replaceChildren(allChip, ...chips)
+        addrChips.classList.remove('xw-hide')
+        return
+      }
+
       const chip = (account, text) => el('button', {
         type: 'button',
         role: 'tab',
@@ -1153,14 +1211,70 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       addrChips.classList.remove('xw-hide')
     }
 
+    // Adressen, die aktuell exportiert würden: gewählte Portfolios + Suchfilter, doppelte Adressen raus.
+    // (ETH und alle ERC-20-Token teilen sich eine Adresse – die soll nur einmal in der Liste stehen.)
+    function exportMatches () {
+      const q = addrFilter.value.trim().toLowerCase()
+      const seen = new Set()
+      const out = []
+      for (const a of sheetAddresses) {
+        if (!sheetSelected.has(a.account)) continue
+        if (q && !a.label.toLowerCase().includes(q) && !a.ticker.toLowerCase().includes(q) && !a.asset.toLowerCase().includes(q)) continue
+        if (seen.has(a.address)) continue
+        seen.add(a.address)
+        out.push(a)
+      }
+      return out
+    }
+
+    async function doExport () {
+      const list = exportMatches()
+      if (!list.length) return showNotice(T.exportNone, 'error')
+      try {
+        await call('copyText', list.map((a) => a.address).join('\n'))
+        showNotice(T.exportCopied(list.length), 'ok')
+      } catch (e) {
+        fail(e)
+      }
+    }
+
     function renderAddresses () {
       if (!sheetWallet) return
       if (!sheetAddresses.length) {
         addrChips.classList.add('xw-hide')
+        exportBar.classList.add('xw-hide')
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.addrEmpty }))
         return
       }
       const portfolios = sheetPortfolios()
+
+      // Export-Modus: nach ausgewählten Portfolios filtern, Kopieren-Knopf mit Anzahl anzeigen
+      if (sheetExport) {
+        renderChips(portfolios, null)
+        const list = exportMatches()
+        exportBtn.textContent = T.exportBtn(list.length)
+        exportBtn.disabled = !list.length
+        exportBar.classList.remove('xw-hide')
+        if (!list.length) {
+          addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.exportNone }))
+          return
+        }
+        const order = new Map(portfolios.map(([account], i) => [account, i]))
+        const rows = list.slice().sort((x, y) => order.get(x.account) - order.get(y.account))
+        const nodes = []
+        let lastAcc = null
+        for (const a of rows) {
+          if (a.account !== lastAcc) {
+            nodes.push(el('div', { class: 'xw-addr-group xw-label', text: a.portfolio || a.account }))
+            lastAcc = a.account
+          }
+          nodes.push(addressRow(a))
+        }
+        addrList.replaceChildren(...nodes)
+        return
+      }
+      exportBar.classList.add('xw-hide')
+
       let selected = sheetPortfolioByWallet.get(sheetWallet.id) || null
       if (selected && !portfolios.some(([account]) => account === selected)) selected = null
       renderChips(portfolios, selected)

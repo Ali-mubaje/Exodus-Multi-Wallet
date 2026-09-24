@@ -955,6 +955,12 @@ const api = {
     return { ticker: hit.ticker, address: hit.address }
   },
 
+  // Plain text to the clipboard (used by the multi-address export – one address per line)
+  async copyText (event, text) {
+    clipboard.writeText(String(text == null ? '' : text))
+    return true
+  },
+
   async pickAvatar (event, id) {
     const w = findWallet(id)
     const options = {
