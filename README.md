@@ -157,8 +157,11 @@ Windows-only conveniences that simply don't appear elsewhere:
   sudo xattr -rd com.apple.quarantine /Applications/Exodus.app
   sudo codesign --force --deep --sign - /Applications/Exodus.app
   ```
-  Then open it the first time via **right-click → Open** (or System Settings → Privacy & Security →
-  “Open Anyway”). To check the quarantine flag is gone, this should print nothing:
+  **First launch on macOS (expected once):** because the app is now ad-hoc signed, macOS shows a
+  security prompt the first time. Open **System Settings → Privacy & Security**, click **“Open Anyway”**,
+  then start Exodus again and click **“Open”**. After that it launches normally every time.
+
+  To check the quarantine flag is gone, this should print nothing:
   ```sh
   xattr -r /Applications/Exodus.app | grep quarantine
   ```

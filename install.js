@@ -244,6 +244,9 @@ function resignMac (asarPath) {
 
   if (signed && unquarantined) {
     log('Cleared quarantine and re-signed Exodus (ad-hoc) so macOS will open it.')
+    log('First launch on macOS: if you see a security prompt, open')
+    log('System Settings -> Privacy & Security -> click "Open Anyway", then start Exodus')
+    log('again and click "Open". After that it opens normally.')
   } else {
     log('WARNING: could not fully prepare Exodus for macOS automatically.')
     log('Run these once in Terminal, then open Exodus:')
