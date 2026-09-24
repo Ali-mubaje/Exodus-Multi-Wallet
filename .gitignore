@@ -1,0 +1,15 @@
+# Debug-Log, das das Addon zur Laufzeit auf den Desktop schreibt
+exodus-wallets-debug.log
+
+# Sicherungen der originalen Exodus-Dateien (entstehen beim Installieren)
+*.asar.orig
+*.asar.neu
+
+# Betriebssystem / Editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Node
+node_modules/
