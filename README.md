@@ -47,7 +47,31 @@ gradient. It automatically picks up the active Exodus theme as well as the langu
 
 ---
 
-## Installation
+## Quick install (one line)
+
+**Requirements:** [Node.js](https://nodejs.org/) and the Exodus desktop app. **Quit Exodus first.**
+These commands download the tool and install the sidebar – run again to uninstall it (toggle).
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.ps1 | iex
+```
+
+**macOS / Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.sh | sh
+```
+
+> These fetch and run a script from this repository. That's convenient but powerful – only paste a
+> `curl … | sh` / `irm … | iex` command from a source you trust, and feel free to open
+> [`bootstrap.sh`](bootstrap.sh) / [`bootstrap.ps1`](bootstrap.ps1) first to see exactly what they do.
+> After an Exodus update, run the same command twice (uninstall, then install) or use `install` below.
+
+---
+
+## Manual installation
 
 **Requirements:** [Node.js](https://nodejs.org/) and the Exodus desktop app. Works on **Windows,
 macOS and Linux**. No `npm install` needed – the installer only uses Node's built-ins.
