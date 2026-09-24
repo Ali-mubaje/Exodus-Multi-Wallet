@@ -1,150 +1,184 @@
-# Exsodus – Wallet-Seitenleiste für Exodus
+# Exsodus – a wallet sidebar for Exodus
 
-Exsodus rüstet der [Exodus](https://www.exodus.com/)-Desktop-App eine Seitenleiste nach, mit der
-du **mehrere getrennte Wallets** (jede mit eigener 12-Wörter-Phrase) verwaltest und mit einem Klick
-zwischen ihnen wechselst – ohne jedes Mal den Datenordner von Hand zu tauschen.
+Exsodus adds a sidebar to the [Exodus](https://www.exodus.com/) desktop app that lets you manage
+**several independent wallets** (each with its own 12-word phrase) and switch between them with one
+click – without swapping the data folder by hand every time.
 
-Die Seitenleiste ist optisch an Exodus angelehnt: gleiche Farben, Schrift (Roboto) und der typische
-Verlauf von Violett nach Cyan. Sie übernimmt automatisch das aktive Exodus-Theme sowie Sprache und
-Anzeigewährung.
+The sidebar is styled to match Exodus: same colors, font (Roboto) and the signature violet-to-cyan
+gradient. It automatically picks up the active Exodus theme as well as the language and display currency.
 
-> **Kurz gesagt:** ein Wallet-Umschalter, der so aussieht und sich so anfühlt, als käme er von Exodus.
+> **In short:** a wallet switcher that looks and feels like it shipped with Exodus.
 
 <p align="center">
-  <img src="docs/images/sidebar.png" width="330" alt="Wallet-Seitenleiste mit Gesamtsumme und Wallet-Liste">
+  <img src="docs/images/sidebar.png" width="330" alt="Wallet sidebar with combined total and wallet list">
 </p>
 
 ---
 
-## Funktionen
+## Features
 
-- **Mehrere Wallets nebeneinander** – jede in ihrem eigenen Datenordner unter `%APPDATA%\Exodus-Wallets`,
-  jede mit eigener 12-Wörter-Phrase.
-- **Umschalten mit einem Klick** – Wallet öffnen, zu einem laufenden Fenster springen oder per
-  *Wechseln* die aktuelle Wallet schließen und die neue öffnen.
-- **Gesamtsumme oben** – der Wert aller Wallets zusammen, bei gemischten Währungen als Teilsummen
-  (z. B. `12.330,19 € + 150,14 £`; ohne Kursumrechnung aus dem Netz).
-- **Kontostände ohne Öffnen** – jedes laufende Fenster speichert seinen letzten Fiat-Stand alle 20 s,
-  sodass die Leiste die Stände aller Wallets zeigt.
-- **Adressen kopieren ohne Öffnen** – Empfangsadressen aller Coins, mit Coin-Suche und **Portfolio-Tabs**;
-  bei mehreren Portfolios kopierst du gezielt die Adresse des richtigen Portfolios.
-- **12 Wörter anzeigen** – führt zu Exodus' eigener Backup-Seite (Exodus fragt dort das Passwort ab).
-- **Start-Wallet festlegen** – diese Wallet öffnet sich, wenn du Exodus normal startest.
-- **Umbenennen** – auch offene Wallets (werden dafür geschlossen und optional wieder geöffnet).
-- **Löschen** – verschiebt den Wallet-Ordner in den **Papierkorb** (Bestätigung durch Eintippen des Namens).
-- **Eigenes Bild pro Wallet** – oder das Exodus-Logo als Standard.
-- **Alte Ordner übernehmen** – von Hand umbenannte `exodus.wallet`-Ordner werden erkannt und kopiert.
-- **Fenstertitel** – jedes Fenster trägt den Wallet-Namen (Taskleiste, Alt+Tab).
-- **Rechtsklick** auf eine Wallet öffnet das Menü an der Mausposition.
-- **Sprache & Währung** folgen der Exodus-Einstellung (Deutsch/Englisch, Zahlen- und Datumsformat passend).
+- **Multiple wallets side by side** – each in its own data folder under the Exodus-Wallets directory,
+  each with its own 12-word phrase.
+- **One-click switching** – open a wallet, jump to an already-running window, or *Switch* to close the
+  current wallet and open another.
+- **Combined total up top** – the value of all wallets together; with mixed currencies shown as
+  subtotals (e.g. `$12,330.19 + £150.14`; no online exchange-rate conversion).
+- **Balances without opening** – every running window saves its last fiat balance every 20 s, so the
+  sidebar shows the balances of all wallets.
+- **Copy addresses without opening** – receive addresses for all coins, with a coin search and
+  **portfolio tabs**; with several portfolios you copy the address of the right one.
+- **Show 12 words** – takes you to Exodus' own backup screen (Exodus asks for the password there).
+- **Set a start wallet** – this wallet opens when you launch Exodus normally.
+- **Rename** – including open wallets (they are closed for it and optionally reopened).
+- **Delete** – moves the wallet folder to the **trash/recycle bin** (confirm by typing the name).
+- **Custom picture per wallet** – or the Exodus logo as the default.
+- **Adopt old folders** – manually renamed `exodus.wallet` folders are detected and copied in.
+- **Window title** – each window carries its wallet name (taskbar, Alt+Tab / ⌘Tab).
+- **Right-click** a wallet to open the menu at the cursor.
+- **Language & currency** follow the Exodus setting (English/German, with matching number and date format).
 
-### Bildschirmfotos
+### Screenshots
 
-| Aktionsmenü | Adressen kopieren | Wallet löschen |
+| Action menu | Copy addresses | Delete wallet |
 |:---:|:---:|:---:|
-| ![Menü](docs/images/menu.png) | ![Adressen](docs/images/addresses.png) | ![Löschen](docs/images/delete.png) |
+| ![Menu](docs/images/menu.png) | ![Addresses](docs/images/addresses.png) | ![Delete](docs/images/delete.png) |
 
-*(Die Bilder zeigen Beispieldaten in einer Testumgebung.)*
+*(The images show sample data in a test environment.)*
 
 ---
 
 ## Installation
 
-**Voraussetzungen:** Windows, [Node.js](https://nodejs.org/) und eine installierte Exodus-Desktop-App.
+**Requirements:** [Node.js](https://nodejs.org/) and the Exodus desktop app. Works on **Windows,
+macOS and Linux**. No `npm install` needed – the installer only uses Node's built-ins.
 
-Es reichen der `install.js` und der Ordner `payload/` im selben Verzeichnis:
+Get the files (clone the repo or download it), so `install.js` and the `payload/` folder sit together:
 
 ```
-exsodus\
+exsodus/
 ├── install.js
-└── payload\
+└── payload/
     ├── main.js
     └── preload.js
 ```
 
-Dann:
+Then **quit Exodus completely** (also the tray/menu-bar icon) and run one command:
 
-1. Exodus **vollständig schließen** (auch das Symbol im Infobereich der Taskleiste).
-2. Im Ordner ausführen:
-   ```
-   node install.js install
-   ```
-3. Exodus starten – links oben vor dem Logo ist jetzt der Wallet-Knopf.
+### Windows
 
-Weitere Befehle:
+```bat
+node install.js install
+```
 
-| Befehl | Wirkung |
+Or double-click **`install.cmd`**.
+
+### macOS / Linux
+
+```sh
+node install.js install
+```
+
+Or run **`sh install.sh`**.
+
+After it finishes, start Exodus – the wallet button is at the top left, before the logo.
+
+### Uninstall
+
+Restores the original Exodus from the automatic backup:
+
+| OS | Command | Or |
+|---|---|---|
+| Windows | `node install.js uninstall` | double-click `uninstall.cmd` |
+| macOS / Linux | `node install.js uninstall` | `sh uninstall.sh` |
+
+Your wallets are kept (in the Exodus-Wallets folder in your app-data directory).
+
+### Other commands
+
+| Command | What it does |
 |---|---|
-| `node install.js install` | Seitenleiste in die neueste Exodus-Version einbauen (legt vorher ein Backup an) |
-| `node install.js uninstall` | Original-Exodus aus dem Backup wiederherstellen |
-| `node install.js status` | Zeigt für jede installierte Version, ob die Seitenleiste aktiv ist |
-| `node install.js install --app "<Pfad zu app-x.y.z>"` | Eine bestimmte Exodus-Version statt der neuesten |
+| `node install.js status` | For each detected Exodus install, show whether the sidebar is active |
+| `node install.js install --app "<path>"` | Use a specific Exodus install instead of auto-detecting |
 
-> **Nach jedem Exodus-Update** einmal `node install.js install` erneut ausführen – das Update ersetzt die
-> Datei `app.asar`, in die das Addon eingebaut wird. Deine Wallets bleiben davon unberührt.
+Where Exodus is looked for automatically:
 
----
+| OS | Path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\exodus\app-x.y.z\resources\app.asar` |
+| macOS | `/Applications/Exodus.app/Contents/Resources/app.asar` |
+| Linux | `/opt/Exodus/resources/app.asar` (and other common paths, or `exodus` on `PATH`) |
 
-## Umzug auf einen anderen Rechner
-
-Wallets, Namen, Bilder, Start-Wallet und gespeicherte Adressen liegen unter `%APPDATA%\Exodus-Wallets`
-(und die Haupt-Wallet unter `%APPDATA%\Exodus`) und werden **nicht** vom Installer kopiert.
-
-- **Sauber neu:** Addon installieren und jede Wallet mit ihren 12 Wörtern wiederherstellen.
-- **Von Hand umbenannte Ordner:** Liegt ein alter `exodus.wallet`-Ordner (z. B. als `exodus.wallet1`)
-  direkt in `%APPDATA%\Exodus`, bietet die Leiste unten *„Alten Ordner … übernehmen“* an. Das Original
-  bleibt dabei unangetastet, die Kopie wird Datei für Datei per Prüfsumme geprüft.
+> **After every Exodus update**, run `install` again – the update replaces the `app.asar` that the
+> add-on patches. Your wallets are not affected.
 
 ---
 
-## Sicherheit
+## Platform notes
 
-- Das Addon **liest oder entschlüsselt keine Seeds, Passwörter oder privaten Schlüssel** und baut
-  **keine Netzwerkverbindungen** auf.
-- Es liest über Exodus' eigene Selektoren nur die Fiat-Kontostände und öffentlichen Empfangsadressen
-  und speichert sie als Cache im jeweiligen Datenordner.
-- „12 Wörter anzeigen“ öffnet nur Exodus' eigenen Backup-Bildschirm – die Passwortabfrage übernimmt Exodus.
-- Löschen heißt **Papierkorb**, kein hartes Löschen. Schlägt das Verschieben fehl, passiert nichts.
-- Die Aktionen nehmen nur Aufrufe der echten Exodus-Oberfläche an (geprüfte Herkunft und Session).
+The installer is fully cross-platform. The runtime add-on works on all three systems, with two
+Windows-only conveniences that simply don't appear elsewhere:
 
-> ⚠️ Trotzdem gilt: Sichere immer deine 12 Wörter. Nur damit lässt sich eine Wallet wiederherstellen,
-> wenn ein Datenordner verloren geht.
+- **Desktop shortcuts** (`.lnk`) are Windows-only; the menu entry is hidden on macOS/Linux.
+- Everything else – switching, balances, addresses, rename, delete, start wallet, custom pictures –
+  works on all platforms.
 
----
-
-## Wie es funktioniert
-
-Exodus ist eine Electron-App. Der Installer packt `resources\app.asar` aus, hängt **eine Zeile** an
-`src/app/main/index.js` an (inline, als IIFE) und legt die beiden Payload-Dateien daneben ab. Sonst
-bleibt alles Byte für Byte gleich; das Original wird als `app.asar.orig` gesichert.
-
-- **`payload/main.js`** – läuft im Hauptprozess: verwaltet die Datenordner, startet Exodus mit dem
-  offiziellen Parameter `--datadir`, speichert Kontostand- und Adress-Cache, setzt Fenstertitel und
-  beantwortet die IPC-Aufrufe der Seitenleiste.
-- **`payload/preload.js`** – läuft als zusätzliches Preload-Skript in der Exodus-Oberfläche (eigene
-  isolierte Welt) und baut die Seitenleiste als DOM auf. Alle Aktionen laufen über IPC an `main.js`.
-- **`install.js`** – liest und schreibt das asar-Format selbst (inkl. Integritäts-Hashes), prüft das
-  Ergebnis vor dem Ersetzen und kann sauber deinstallieren.
-
-Details siehe [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Developed and tested most heavily on **Windows with Exodus 26.8.x**. On macOS/Linux the installer and
+core features work, but have seen less real-world testing – please report issues.
 
 ---
 
-## Kompatibilität
+## Moving to another computer
 
-Entwickelt und getestet mit **Exodus 26.8.x** unter Windows. Da das Addon auf interne Bausteine von
-Exodus zugreift (Selektoren, Session-Namen, Fenstertyp), kann eine deutlich andere Version abweichen.
-Der Installer warnt, wenn erwartete Bausteine fehlen. Bei Problemen hilft die Datei
-`exodus-wallets-debug.log`, die das Addon auf den Desktop schreibt.
+Wallets, names, pictures, the start wallet and cached addresses live in the Exodus-Wallets folder in
+your app-data directory (and the main wallet under the Exodus folder). The installer does **not** copy
+these.
+
+- **Fresh start:** install the add-on and restore each wallet from its 12-word phrase.
+- **Manually renamed folders:** if an old `exodus.wallet` folder (e.g. `exodus.wallet1`) sits directly
+  in the Exodus data folder, the sidebar offers *“Adopt old folder …”* at the bottom. The original is
+  left untouched; the copy is verified file by file with checksums.
 
 ---
 
-## Haftungsausschluss
+## Security
 
-Dieses Projekt ist ein inoffizielles Community-Addon und steht in **keiner Verbindung zu Exodus
-Movement, Inc.** „Exodus“ ist eine Marke ihrer jeweiligen Inhaber. Die Nutzung erfolgt auf eigene
-Verantwortung; das Verändern von `app.asar` kann von zukünftigen Exodus-Versionen überschrieben werden.
+- The add-on **never reads or decrypts seeds, passwords or private keys** and makes **no network
+  connections**.
+- Via Exodus' own selectors it only reads fiat balances and public receive addresses and caches them
+  in each wallet's data folder.
+- “Show 12 words” only opens Exodus' own backup screen – Exodus handles the password prompt.
+- Delete means **trash/recycle bin**, never a hard delete. If moving to the bin fails, nothing happens.
+- Actions only accept calls from the real Exodus UI (verified origin and session).
 
-## Lizenz
+> ⚠️ Still: always back up your 12 words. They are the only way to recover a wallet if a data folder
+> is lost.
 
-[MIT](LICENSE) – gilt für den Code dieses Addons, nicht für Exodus selbst.
+---
+
+## How it works
+
+Exodus is an Electron app. The installer unpacks `app.asar`, appends **one line** to
+`src/app/main/index.js` (inline, as an IIFE) and adds the two payload files next to it. Everything else
+stays byte for byte identical; the original is kept as `app.asar.orig`.
+
+- **`payload/main.js`** – runs in the main process: manages the data folders, launches Exodus with the
+  official `--datadir` flag, caches balances and addresses, sets window titles and answers the
+  sidebar's IPC calls.
+- **`payload/preload.js`** – runs as an extra preload script in the Exodus UI (its own isolated world)
+  and builds the sidebar as DOM. All actions go through IPC to `main.js`.
+- **`install.js`** – reads and writes the asar format itself (including integrity hashes), verifies the
+  result before replacing anything, and can cleanly uninstall.
+
+More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Disclaimer
+
+This is an unofficial community add-on and is **not affiliated with Exodus Movement, Inc.** “Exodus”
+is a trademark of its respective owner. Use at your own risk; patching `app.asar` may be overwritten by
+future Exodus versions.
+
+## License
+
+[MIT](LICENSE) – covers this add-on's code, not Exodus itself.

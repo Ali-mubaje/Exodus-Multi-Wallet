@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 'use strict'
 /*
- * Exodus Wallet-Seitenleiste – Installer
+ * Exodus wallet sidebar – installer (Windows, macOS, Linux)
  *
- *   node install.js install     Seitenleiste in die neueste Exodus-Version einbauen (legt vorher ein Backup an)
- *   node install.js uninstall   Original-Exodus aus dem Backup wiederherstellen
- *   node install.js status      Zeigt, ob die Seitenleiste installiert ist
+ *   node install.js install     Patch the sidebar into the installed Exodus (creates a backup first)
+ *   node install.js uninstall   Restore the original Exodus from the backup
+ *   node install.js status      Show whether the sidebar is installed
  *
- * Optionen:
- *   --app "<Pfad zu ...\exodus\app-x.y.z>"   bestimmte Exodus-Version statt der neuesten
+ * Options:
+ *   --app "<path to the Exodus app dir>"   use a specific Exodus install instead of auto-detecting
  *
- * Was wird geändert? In resources\app.asar wird am Ende von src/app/main/index.js EINE Zeile angehängt,
- * die src/app/wallet-switcher/main.js lädt, und die beiden Dateien aus dem Ordner "payload" werden
- * hinzugefügt. Sonst bleibt alles Byte für Byte gleich. Das Original liegt als app.asar.orig daneben.
+ * What changes? Inside the app.asar, ONE line is appended to src/app/main/index.js that loads the
+ * sidebar, and the two files from the "payload" folder are added. Everything else stays byte for byte
+ * identical. The untouched original is kept next to it as app.asar.orig.
  *
- * Exodus-Updates installieren eine neue Programmversion (neuer Ordner app-x.y.z) – danach einfach
- * erneut "install" ausführen. Die Wallets selbst sind davon nicht betroffen.
+ * Exodus locations checked automatically:
+ *   Windows  %LOCALAPPDATA%\exodus\app-x.y.z\resources\app.asar
+ *   macOS    /Applications/Exodus.app/Contents/Resources/app.asar
+ *   Linux    /opt/Exodus/resources/app.asar (and other common paths, or `exodus` on PATH)
+ *
+ * Exodus updates ship a new build – just run "install" again afterwards. Your wallets are unaffected.
  */
 
 const fs = require('fs')
@@ -129,38 +133,76 @@ function compareVersions (a, b) {
   return 0
 }
 
-function exodusBase () {
+// Windows keeps every version in its own folder (%LOCALAPPDATA%\exodus\app-x.y.z\resources\app.asar).
+function winExodusBase () {
   return path.join(process.env.LOCALAPPDATA || '', 'exodus')
 }
 
-function appVersions () {
+function winAppVersions () {
   let entries = []
-  try { entries = fs.readdirSync(exodusBase(), { withFileTypes: true }) } catch (e) {}
+  try { entries = fs.readdirSync(winExodusBase(), { withFileTypes: true }) } catch (e) {}
   return entries
     .filter((d) => d.isDirectory() && /^app-\d+(\.\d+)*$/.test(d.name))
     .map((d) => d.name)
     .sort((a, b) => compareVersions(a.slice(4), b.slice(4)))
 }
 
-function findAppDir (explicit) {
-  if (explicit) return path.resolve(explicit)
-  const versions = appVersions()
-  if (!versions.length) throw new Error(`Keine Exodus-Installation gefunden (${exodusBase()}).`)
-  return path.join(exodusBase(), versions[versions.length - 1])
+// The app.asar sits under "resources" (Windows/Linux) or "Resources" (macOS).
+function asarPathFor (appDir) {
+  for (const res of ['resources', 'Resources']) {
+    const p = path.join(appDir, res, 'app.asar')
+    if (fs.existsSync(p) || fs.existsSync(p + '.orig')) return p
+  }
+  return path.join(appDir, 'resources', 'app.asar')
 }
 
-function exodusRunningFrom (appDir) {
-  let out = ''
-  try {
-    out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      'Get-Process -Name Exodus -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path'],
-    { encoding: 'utf8', windowsHide: true })
-  } catch (e) {
-    return false
+// Every directory that could hold an Exodus app.asar, newest first, across all platforms.
+function installedAppDirs () {
+  const dirs = []
+  const add = (d) => { if (d && !dirs.includes(d) && fs.existsSync(asarPathFor(d))) dirs.push(d) }
+  if (process.platform === 'win32') {
+    for (const name of winAppVersions().reverse()) add(path.join(winExodusBase(), name))
+  } else if (process.platform === 'darwin') {
+    for (const base of ['/Applications', path.join(process.env.HOME || '', 'Applications')]) {
+      add(path.join(base, 'Exodus.app', 'Contents'))
+    }
+  } else {
+    // Linux: common install locations plus whatever `exodus` on PATH resolves to
+    const guesses = ['/opt/Exodus', '/opt/exodus', '/usr/lib/exodus', '/usr/share/exodus',
+      path.join(process.env.HOME || '', '.local', 'share', 'exodus')]
+    try {
+      const p = execFileSync('sh', ['-c', 'readlink -f "$(command -v exodus 2>/dev/null)" 2>/dev/null'], { encoding: 'utf8' }).trim()
+      if (p) guesses.unshift(path.dirname(p))
+    } catch (e) {}
+    for (const g of guesses) add(g)
   }
-  const prefix = path.resolve(appDir).toLowerCase() + path.sep
-  return out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    .some((p) => path.resolve(p).toLowerCase().startsWith(prefix))
+  return dirs
+}
+
+function findAppDir (explicit) {
+  if (explicit) return path.resolve(explicit)
+  const dirs = installedAppDirs()
+  if (!dirs.length) {
+    const where = process.platform === 'win32' ? winExodusBase()
+      : process.platform === 'darwin' ? '/Applications/Exodus.app'
+      : '/opt/Exodus'
+    throw new Error(`No Exodus installation found (looked near ${where}). Pass --app "<path>" to point at it.`)
+  }
+  return dirs[0]
+}
+
+// Is an Exodus process currently running? Best-effort and cross-platform.
+function exodusRunning () {
+  try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq Exodus.exe', '/NH'], { encoding: 'utf8', windowsHide: true })
+      return /Exodus\.exe/i.test(out)
+    }
+    const out = execFileSync('ps', ['ax', '-o', 'comm,args'], { encoding: 'utf8' })
+    return out.split(/\r?\n/).some((l) => /(^|\/|\s)[Ee]xodus(\s|$)/.test(l) && !/install\.js/.test(l))
+  } catch (e) {
+    return false // if we cannot tell, don't block the user
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -168,58 +210,55 @@ function exodusRunningFrom (appDir) {
 // ---------------------------------------------------------------------------------------------
 
 function install (appDir, opts = {}) {
-  const asarPath = path.join(appDir, 'resources', 'app.asar')
+  const asarPath = asarPathFor(appDir)
   const backupPath = asarPath + '.orig'
-  if (!fs.existsSync(asarPath)) throw new Error(`Nicht gefunden: ${asarPath}`)
-  if (exodusRunningFrom(appDir)) throw new Error('Exodus läuft noch. Bitte alle Exodus-Fenster schließen und erneut versuchen.')
+  if (!fs.existsSync(asarPath) && !fs.existsSync(backupPath)) throw new Error(`Not found: ${asarPath}`)
+  if (exodusRunning()) throw new Error('Exodus is still running. Please quit Exodus completely and try again.')
 
   const payload = PAYLOAD_FILES.map((name) => ({ name, buf: fs.readFileSync(path.join(PAYLOAD_DIR, name)) }))
   if (opts.testHook) payload.push({ name: 'selftest.js', buf: fs.readFileSync(opts.testHook) })
 
-  // Immer vom unveränderten Original ausgehen
-  const current = readAsar(asarPath)
+  // Always build from the untouched original
   let source
   if (fs.existsSync(backupPath)) {
     source = readAsar(backupPath)
-    if (isPatched(source)) throw new Error(`Das Backup ${backupPath} ist selbst verändert. Bitte Exodus neu installieren.`)
-  } else if (isPatched(current)) {
-    throw new Error('Exodus ist bereits verändert, aber das Backup (app.asar.orig) fehlt. Bitte Exodus neu installieren.')
+    if (isPatched(source)) throw new Error(`The backup ${backupPath} is itself modified. Please reinstall Exodus.`)
+  } else if (isPatched(readAsar(asarPath))) {
+    throw new Error('Exodus is already modified, but the backup (app.asar.orig) is missing. Please reinstall Exodus.')
   } else {
     fs.copyFileSync(asarPath, backupPath)
-    log(`Backup des Originals angelegt: ${backupPath}`)
+    log(`Backup of the original created: ${backupPath}`)
     source = readAsar(backupPath)
   }
 
   const header = JSON.parse(JSON.stringify(source.header))
   const mainEntry = getEntry(header, MAIN_ENTRY)
-  if (!mainEntry || mainEntry.files) throw new Error('src/app/main/index.js nicht gefunden – diese Exodus-Version wird nicht unterstützt.')
+  if (!mainEntry || mainEntry.files) throw new Error('src/app/main/index.js not found – this Exodus version is not supported.')
   const mainBuf = readEntry(source, mainEntry)
-  if (mainBuf.includes(MARKER)) throw new Error('Das Original enthält bereits die Seitenleiste – bitte Exodus neu installieren.')
+  if (mainBuf.includes(MARKER)) throw new Error('The original already contains the sidebar – please reinstall Exodus.')
 
-  // Plausibilitätsprüfung: nutzt diese Exodus-Version noch die erwarteten Bausteine?
+  // Sanity check: does this Exodus version still use the building blocks we rely on?
   const mainText = mainBuf.toString('utf8')
   for (const needle of ['persist:main', 'setPath("userData"', 'datadir']) {
-    if (!mainText.includes(needle)) log(`WARNUNG: "${needle}" nicht gefunden – die Seitenleiste funktioniert evtl. nicht mit dieser Exodus-Version.`)
+    if (!mainText.includes(needle)) log(`WARNING: "${needle}" not found – the sidebar may not work with this Exodus version.`)
   }
 
-  // Exodus hat require() überschrieben und erlaubt nur bestimmte Module.
-  // Daher wird main.js direkt inlined statt per require() geladen.
-  // Die preload.js wird separat über registerPreloadScript/setPreloads geladen.
+  // Exodus overrides require() and only allows certain modules, so main.js is inlined instead of
+  // required. preload.js is loaded separately via registerPreloadScript/setPreloads.
   const mainPayload = payload.find((f) => f.name === 'main.js')
   let inlineCode = mainPayload.buf.toString('utf8')
-  // module.exports am Ende entfernen - wird beim Inlining nicht gebraucht
+  // Drop the trailing module.exports – not needed when inlined
   inlineCode = inlineCode.replace(/\n*module\.exports\s*=\s*\{[^}]*\}\s*;?\s*$/, '')
-  // __dirname zeigt beim Inlining auf src/app/main/ statt wallet-switcher/
-  // Daher PRELOAD-Pfad korrigieren: von main/ nach wallet-switcher/preload.js
+  // When inlined, __dirname points at src/app/main/ instead of wallet-switcher/, so fix the PRELOAD path
   inlineCode = inlineCode.replace(
     /const PRELOAD\s*=\s*path\.join\(__dirname,\s*['"]preload\.js['"]\)/,
     "const PRELOAD = path.join(__dirname, '..', 'wallet-switcher', 'preload.js')"
   )
-  // In IIFE wrappen um globalen Scope sauber zu halten
+  // Wrap in an IIFE to keep the global scope clean
   const wrappedCode = `\n;${MARKER}(function(){\n${inlineCode}\n})();\n`
   const newMain = Buffer.concat([mainBuf, Buffer.from(wrappedCode, 'utf8')])
 
-  // Neue/geänderte Dateien werden hinter die unveränderten Originaldaten angehängt
+  // New/changed files are appended after the untouched original data
   const appended = []
   let offset = source.dataSize
   const place = (entry, buf) => {
@@ -239,7 +278,7 @@ function install (appDir, opts = {}) {
     place(targetNode.files[f.name], f.buf)
   }
 
-  const tmpPath = asarPath + '.neu'
+  const tmpPath = asarPath + '.new'
   const headerBuf = buildHeader(header)
   const out = fs.openSync(tmpPath, 'w')
   try {
@@ -250,52 +289,53 @@ function install (appDir, opts = {}) {
     fs.closeSync(out)
   }
 
-  // Ergebnis prüfen, bevor das Original ersetzt wird
+  // Verify the result before replacing the original
   const check = readAsar(tmpPath)
   const same = (parts, expected) => readEntry(check, getEntry(check.header, parts)).equals(expected)
-  if (!same(MAIN_ENTRY, newMain)) throw new Error('Prüfung fehlgeschlagen (main/index.js).')
-  for (const f of payload) if (!same([...TARGET_DIR, f.name], f.buf)) throw new Error(`Prüfung fehlgeschlagen (${f.name}).`)
+  if (!same(MAIN_ENTRY, newMain)) throw new Error('Verification failed (main/index.js).')
+  for (const f of payload) if (!same([...TARGET_DIR, f.name], f.buf)) throw new Error(`Verification failed (${f.name}).`)
   for (const parts of [['package.json'], ['src', 'static', 'exodus-prod.html'], ['src', 'app', 'preload', 'index.js']]) {
     const orig = getEntry(source.header, parts)
-    if (orig && !same(parts, readEntry(source, orig))) throw new Error(`Prüfung fehlgeschlagen (${parts.join('/')}).`)
+    if (orig && !same(parts, readEntry(source, orig))) throw new Error(`Verification failed (${parts.join('/')}).`)
   }
 
   fs.renameSync(tmpPath, asarPath)
-  log(`Seitenleiste installiert in: ${appDir}`)
+  log(`Sidebar installed in: ${appDir}`)
 }
 
 function uninstall (appDir) {
-  const asarPath = path.join(appDir, 'resources', 'app.asar')
+  const asarPath = asarPathFor(appDir)
   const backupPath = asarPath + '.orig'
   if (!fs.existsSync(backupPath)) {
-    if (fs.existsSync(asarPath) && isPatched(readAsar(asarPath))) throw new Error('Backup (app.asar.orig) fehlt. Bitte Exodus neu installieren.')
-    log(`Die Seitenleiste ist in ${appDir} nicht installiert – nichts zu tun.`)
+    if (fs.existsSync(asarPath) && isPatched(readAsar(asarPath))) throw new Error('Backup (app.asar.orig) is missing. Please reinstall Exodus.')
+    log(`The sidebar is not installed in ${appDir} – nothing to do.`)
     return
   }
-  if (exodusRunningFrom(appDir)) throw new Error('Exodus läuft noch. Bitte alle Exodus-Fenster schließen und erneut versuchen.')
-  if (isPatched(readAsar(backupPath))) throw new Error('Das Backup ist selbst verändert. Bitte Exodus neu installieren.')
+  if (exodusRunning()) throw new Error('Exodus is still running. Please quit Exodus completely and try again.')
+  if (isPatched(readAsar(backupPath))) throw new Error('The backup is itself modified. Please reinstall Exodus.')
   fs.renameSync(backupPath, asarPath)
-  log(`Original wiederhergestellt: ${asarPath}`)
+  log(`Original restored: ${asarPath}`)
 }
 
 function status (appDir) {
-  for (const name of appVersions()) {
-    const dir = path.join(exodusBase(), name)
-    const asarPath = path.join(dir, 'resources', 'app.asar')
-    let state = 'app.asar fehlt'
+  const dirs = installedAppDirs()
+  if (!dirs.length) { log('No Exodus installation found.'); return }
+  for (const dir of dirs) {
+    const asarPath = asarPathFor(dir)
+    let state = 'app.asar missing'
     if (fs.existsSync(asarPath)) {
       const asar = readAsar(asarPath)
       if (isPatched(asar)) {
         const main = readEntry(asar, getEntry(asar.header, [...TARGET_DIR, 'main.js'])).toString('utf8')
         const m = main.match(/const VERSION = '([^']+)'/)
-        state = `Seitenleiste installiert (v${m ? m[1] : '?'})`
+        state = `sidebar installed (v${m ? m[1] : '?'})`
       } else {
-        state = 'Original (ohne Seitenleiste)'
+        state = 'original (no sidebar)'
       }
-      if (fs.existsSync(asarPath + '.orig')) state += ', Backup vorhanden'
+      if (fs.existsSync(asarPath + '.orig')) state += ', backup present'
     }
-    const newest = path.resolve(dir) === path.resolve(appDir) ? '  <- wird gestartet' : ''
-    log(`${name}: ${state}${newest}`)
+    const active = path.resolve(dir) === path.resolve(appDir) ? '  <- will be used' : ''
+    log(`${dir}: ${state}${active}`)
   }
 }
 
@@ -316,15 +356,15 @@ function main () {
   if (command === 'install') {
     install(appDir, { testHook })
     log('')
-    log('Fertig! Starte Exodus – links oben vor dem Logo ist jetzt der Wallet-Knopf.')
-    log('Nach einem Exodus-Update diesen Installer einfach erneut ausführen.')
+    log('Done! Start Exodus – the wallet button is now at the top left, before the logo.')
+    log('After an Exodus update, just run this installer again.')
   } else if (command === 'uninstall') {
     uninstall(appDir)
-    log('Die Seitenleiste ist entfernt. Deine Wallets bleiben erhalten (%APPDATA%\\Exodus-Wallets).')
+    log('The sidebar has been removed. Your wallets are kept (Exodus-Wallets in your app-data folder).')
   } else if (command === 'status') {
     status(appDir)
   } else {
-    throw new Error(`Unbekannter Befehl "${command}". Erlaubt: install, uninstall, status`)
+    throw new Error(`Unknown command "${command}". Allowed: install, uninstall, status`)
   }
 }
 
@@ -332,6 +372,6 @@ try {
   main()
 } catch (e) {
   console.error('')
-  console.error('FEHLER: ' + e.message)
+  console.error('ERROR: ' + e.message)
   process.exitCode = 1
 }

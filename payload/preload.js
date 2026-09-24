@@ -901,7 +901,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
       entries.push([ICON.image, T.mAvatar, () => pickAvatar(w)])
       if (w.avatar) entries.push([ICON.reset, T.mAvatarReset, () => resetAvatar(w)])
-      entries.push([ICON.desktop, T.mShortcut, () => makeShortcut(w)])
+      // Desktop-Verknüpfungen gibt es nur unter Windows (.lnk)
+      if (!state || state.platform === 'win32') entries.push([ICON.desktop, T.mShortcut, () => makeShortcut(w)])
       entries.push([ICON.folder, T.mFolder, () => call('showFolder', w.id).catch(fail)])
       // Standard-Ordner gehört Exodus selbst; die eigene Wallet kann sich nicht aus dem Fenster heraus löschen
       if (!w.isStandard && !w.external && !w.isCurrent) {

@@ -1,126 +1,146 @@
-# Architektur & Interna
+# Architecture & internals
 
-Diese Datei erklärt, wie Exsodus aufgebaut ist – gedacht für alle, die den Code lesen, anpassen oder
-an eine neue Exodus-Version anpassen wollen.
+This document explains how Exsodus is built – for anyone reading the code, changing it, or adapting it
+to a new Exodus version.
 
-## Überblick
+## Overview
 
-Exodus ist eine Electron-App. Exsodus klinkt sich an zwei Stellen ein:
+Exodus is an Electron app. Exsodus hooks in at two places:
 
 ```
                  install.js
-                     │  hängt EINE Zeile an src/app/main/index.js an (inline IIFE)
+                     │  appends ONE line to src/app/main/index.js (inline IIFE)
                      ▼
 ┌──────────────────────────────┐        IPC (exodus-wallets:*)       ┌───────────────────────────┐
 │  payload/main.js              │  ◄───────────────────────────────► │  payload/preload.js       │
-│  (Electron-Hauptprozess)      │                                    │  (Exodus-Oberfläche,      │
-│                               │                                    │   isolierte Welt)         │
-│  • Datenordner verwalten      │                                    │  • Seitenleiste als DOM   │
-│  • Exodus mit --datadir starten│                                   │  • Menü, Adress-Ansicht,  │
-│  • Kontostand-/Adress-Cache   │                                    │    Dialoge                │
-│  • Fenstertitel, Start-Wallet │                                    │  • ruft main.js per IPC   │
+│  (Electron main process)      │                                    │  (Exodus UI,              │
+│                               │                                    │   isolated world)         │
+│  • manage data folders        │                                    │  • sidebar as DOM         │
+│  • launch Exodus with --datadir│                                   │  • menu, address view,    │
+│  • balance/address cache      │                                    │    dialogs                │
+│  • window titles, start wallet│                                    │  • calls main.js via IPC  │
 └──────────────────────────────┘                                    └───────────────────────────┘
 ```
 
 ## Installer (`install.js`)
 
-- Liest `resources\app.asar` mit einem eigenen, minimalen asar-Parser (Header-Pickle, Offsets,
-  Integritäts-Hashes je 4-MB-Block).
-- Sichert das unveränderte Original als `app.asar.orig`. Alle Änderungen gehen immer vom Original aus.
-- Hängt an `src/app/main/index.js` eine als IIFE gewrappte Kopie von `main.js` an (Marker
-  `/*exodus-wallets-sidebar*/`). Grund fürs Inlinen: Exodus überschreibt `require()` und lässt nur
-  bestimmte Module zu.
-- Legt `preload.js` unter `src/app/wallet-switcher/` ab; der Preload-Pfad wird beim Inlinen von
-  `main/` auf `../wallet-switcher/preload.js` korrigiert.
-- Prüft das neu gebaute asar (Payload-Dateien + einige unveränderte Dateien) **vor** dem Ersetzen.
-- `uninstall` spielt einfach `app.asar.orig` zurück.
+- Reads `app.asar` with a small, self-contained asar parser (header pickle, offsets, per-4-MB-block
+  integrity hashes).
+- Backs up the untouched original as `app.asar.orig`. Every change is built from the original.
+- Appends an IIFE-wrapped copy of `main.js` to `src/app/main/index.js` (marker
+  `/*exodus-wallets-sidebar*/`). Why inline: Exodus overrides `require()` and only allows certain
+  modules.
+- Places `preload.js` under `src/app/wallet-switcher/`; the preload path is corrected from `main/` to
+  `../wallet-switcher/preload.js` during inlining.
+- Verifies the freshly built asar (payload files + a few unchanged files) **before** replacing the
+  original.
+- `uninstall` simply restores `app.asar.orig`.
 
-## Hauptprozess (`payload/main.js`)
+### Cross-platform detection
 
-### Wallet-Modell
-- **Standard-Wallet:** `%APPDATA%\Exodus` (gehört Exodus selbst, wird ohne `--datadir` gestartet).
-- **Weitere Wallets:** je ein Ordner unter `%APPDATA%\Exodus-Wallets\<Name>`, gestartet mit
-  `--datadir <Ordner>`.
-- Läuft eine Wallet, legt Chromium eine `lockfile` in ihren Ordner – daran wird „geöffnet“ erkannt.
+`install.js` finds Exodus per OS and handles the `resources` vs `Resources` folder name:
 
-### Kontostand- & Adress-Cache
-- In jedes laufende Exodus-Fenster wird per `executeJavaScript` ein kleines Skript eingespielt, das
-  über Exodus' eigene Selektoren (`selectors.fiatBalances`, `selectors.locale`, `selectors.walletAccounts`)
-  die Fiat-Stände, Sprache und Währung liest.
-- Ergebnis landet als `wallet-switcher-cache.json` im Datenordner der Wallet. So sehen andere Fenster
-  den Stand, ohne die Wallet zu öffnen. Intervall: 20 s.
-- **Adressen:** Exodus' Adress-API liegt nicht global, sondern kommt per React-Provider (`exodus`-Prop)
-  in die Oberfläche. Das Skript sucht sie über den React-Fiber-Baum und ruft
-  `addressProvider.getReceiveAddress({ assetName, walletAccount })` – pro Portfolio, Hardware-Portfolios
-  (Ledger/Trezor) ausgenommen. Intervall: 5 min. Gespeichert unter `addresses`/`addressesAt`.
+| OS | App directory | asar |
+|---|---|---|
+| Windows | `%LOCALAPPDATA%\exodus\app-x.y.z` (newest) | `resources/app.asar` |
+| macOS | `/Applications/Exodus.app/Contents` (and `~/Applications`) | `Resources/app.asar` |
+| Linux | `/opt/Exodus`, `/usr/lib/exodus`, … or `exodus` on `PATH` | `resources/app.asar` |
 
-### Sprache (i18n)
-- Folgt `selectors.locale.language` (Standard `en`). Texte des Hauptprozesses: `MESSAGES` (en, de).
-- Die Seitenleiste hat ihr eigenes Wörterbuch `TEXTS` in `preload.js` und schaltet zur Laufzeit um,
-  wenn `state.locale.language` wechselt.
+`exodusRunning()` checks for a running Exodus (Windows: `tasklist`; posix: `ps`) so the installer can
+refuse to patch while the app is open.
 
-### Fenstertitel
-- Exodus' Hauptfenster ist ein `BaseWindow` (kein `BrowserWindow`), daher gibt es kein
-  `browser-window-created`. Titel werden per Intervall gesetzt: „EXODUS <Version> – <Wallet-Name>“.
+## Main process (`payload/main.js`)
 
-### Start-Wallet & Weiterleitung
-- `startWallet` steht in `%APPDATA%\Exodus-Wallets\einstellungen.json`.
-- Wird Exodus ohne `--datadir` gestartet (Desktop-Symbol/Startmenü) und ist eine andere Start-Wallet
-  gesetzt, leitet `redirectToStartWallet()` an deren Ordner weiter und beendet sich.
-- Eigene Starts tragen `EXODUS_WALLETS_DIRECT=1` und werden nicht umgeleitet; Verknüpfungen nutzen
-  immer `--datadir`.
+### Wallet model
+- **Default wallet:** the `Exodus` folder in the app-data dir (owned by Exodus, launched without
+  `--datadir`).
+- **Other wallets:** one folder each under `Exodus-Wallets/<name>`, launched with `--datadir <folder>`.
+- While a wallet runs, Chromium keeps a `lockfile` in its folder – that's how "open" is detected.
 
-### Befehlskanal zwischen Fenstern
-- Jede Wallet läuft in einem eigenen Prozess. Für „schließen“, „nach vorne holen“ und „Backup zeigen“
-  legt `main.js` eine `wallet-switcher-command.json` in den Zielordner; der dortige Prozess prüft sie
-  jede Sekunde.
+### Balance & address cache
+- A small script is injected into each running Exodus window via `executeJavaScript` that reads fiat
+  balances, language and currency through Exodus' own selectors (`selectors.fiatBalances`,
+  `selectors.locale`, `selectors.walletAccounts`).
+- The result is stored as `wallet-switcher-cache.json` in the wallet's data folder, so other windows
+  see the balance without opening the wallet. Interval: 20 s.
+- **Addresses:** Exodus' address API is not global; it arrives via a React provider (`exodus` prop).
+  The script walks the React fiber tree to find it and calls
+  `addressProvider.getReceiveAddress({ assetName, walletAccount })` per portfolio, excluding hardware
+  portfolios (Ledger/Trezor). Interval: 5 min. Stored under `addresses`/`addressesAt`.
 
-### Umbenennen & Löschen
-- **Umbenennen** einer offenen fremden Wallet: erst per `quit`-Befehl schließen, auf das Verschwinden
-  der `lockfile` warten, dann den Ordner umbenennen. Die **eigene** Wallet benennt ein PowerShell-Helfer
-  nach dem Beenden um (und öffnet sie optional wieder). Die Standard-Wallet bekommt nur einen
-  Anzeigenamen (`standardName`), ihr Ordner bleibt.
-- **Löschen** nur über `shell.trashItem` (Papierkorb). Schlägt es fehl, wird abgebrochen. Bestätigung
-  durch Eintippen des Namens; Client sperrt den Knopf, `api.remove` prüft erneut.
+### Language (i18n)
+- Follows `selectors.locale.language` (default `en`). Main-process strings: `MESSAGES` (en, de).
+- The sidebar has its own dictionary `TEXTS` in `preload.js` and switches at runtime when
+  `state.locale.language` changes.
 
-### Icons & Bilder
-- **Coin-Icons:** aus Exodus selbst (`src/res/deps/img/<asset>-<hash>.svg`, bevorzugt 40×40). Tokens
-  fallen auf das Icon des Grund-Coins zurück.
-- **Wallet-Bild:** Standard ist das Exodus-Logo. Eigenes Bild wird quadratisch zugeschnitten, auf
-  128 px verkleinert und als `wallet-switcher-avatar.png` im Datenordner gespeichert; die Leiste
-  bekommt es als `data:`-URL (Exodus-CSP erlaubt nur `self` und `data:`).
+### Window titles
+- Exodus' main window is a `BaseWindow` (not a `BrowserWindow`), so there is no
+  `browser-window-created`. Titles are set on an interval: “EXODUS <version> – <wallet name>”.
 
-## Oberfläche (`payload/preload.js`)
+### Start wallet & redirect
+- `startWallet` lives in `Exodus-Wallets/einstellungen.json`.
+- When Exodus is launched without `--datadir` (desktop icon/start menu) and a different start wallet is
+  set, `redirectToStartWallet()` relaunches into that folder and exits.
+- Our own launches carry `EXODUS_WALLETS_DIRECT=1` and are not redirected; shortcuts always use
+  `--datadir`.
 
-- Läuft in einer isolierten Welt (kein Node, kein Zugriff auf Exodus-Interna außer den globalen
-  Selektoren, die für den Cache genutzt werden).
-- Baut `#xw-root` direkt am `body` auf. Da die Exodus-Theme-Klasse auf einem Element in
-  `#app-container` sitzt, kopiert `syncTheme()` die berechneten CSS-Variablen herüber.
-- CSS ist bewusst mit `!important` und maximalem `z-index` gegen Kollisionen mit Exodus abgeschirmt.
-- Alle privilegierten Aktionen laufen über `ipcRenderer.invoke('exodus-wallets:*')`; `main.js` prüft
-  Absender-URL und Session, bevor es etwas ausführt.
+### Command channel between windows
+- Each wallet runs in its own process. For "close", "focus" and "show backup", `main.js` drops a
+  `wallet-switcher-command.json` into the target folder; that process polls it once a second.
 
-## Dateien im Datenordner einer Wallet
+### Rename & delete
+- **Rename** of an open foreign wallet: send a `quit` command, wait for the `lockfile` to vanish, then
+  rename the folder. The **current** wallet is renamed by a detached helper after exit (PowerShell on
+  Windows, a `sh` script on macOS/Linux) that can optionally reopen it. The default wallet only gets a
+  display name (`standardName`); its folder stays put.
+- **Delete** goes through `shell.trashItem` (trash/recycle bin) only. If it fails, it aborts.
+  Confirmation is by typing the name; the client gates the button and `api.remove` re-checks.
 
-| Datei | Zweck |
+### Icons & pictures
+- **Coin icons:** taken from Exodus itself (`src/res/deps/img/<asset>-<hash>.svg`, preferring 40×40).
+  Tokens fall back to the base coin's icon.
+- **Wallet picture:** default is the Exodus logo. A custom picture is cropped square, resized to 128 px
+  and stored as `wallet-switcher-avatar.png` in the data folder; the sidebar gets it as a `data:` URL
+  (Exodus' CSP only allows `self` and `data:`).
+
+### Platform-specific runtime bits
+- **Desktop shortcuts** use `shell.writeShortcutLink` (Windows `.lnk`) and are hidden/blocked on other
+  platforms.
+- The current-wallet rename helper has a PowerShell and a POSIX shell variant.
+
+## UI (`payload/preload.js`)
+
+- Runs in an isolated world (no Node; only the global selectors used for the cache).
+- Builds `#xw-root` directly on `body`. Because the Exodus theme class sits on an element inside
+  `#app-container`, `syncTheme()` copies the computed CSS variables over.
+- CSS is deliberately shielded against Exodus with `!important` and a maximal `z-index`.
+- All privileged actions go through `ipcRenderer.invoke('exodus-wallets:*')`; `main.js` checks the
+  sender URL and session before doing anything.
+
+## Files in a wallet's data folder
+
+| File | Purpose |
 |---|---|
-| `wallet-switcher-cache.json` | Kontostand, Währung, Portfolios, Empfangsadressen (Cache) |
-| `wallet-switcher-avatar.png` | eigenes Wallet-Bild (optional) |
-| `wallet-switcher-command.json` | kurzlebiger Befehl an das Fenster dieser Wallet |
-| `wallet-switcher-restore` | Merker: Wallet soll per 12 Wörtern eingerichtet werden |
+| `wallet-switcher-cache.json` | balance, currency, portfolios, receive addresses (cache) |
+| `wallet-switcher-avatar.png` | custom wallet picture (optional) |
+| `wallet-switcher-command.json` | short-lived command for this wallet's window |
+| `wallet-switcher-restore` | marker: wallet should be set up from a 12-word phrase |
 
-Global unter `%APPDATA%\Exodus-Wallets`: `einstellungen.json` (Einstellungen inkl. Start-Wallet,
-Anzeigename der Standard-Wallet) und `importiert.log` (übernommene Alt-Ordner).
+Global, under `Exodus-Wallets`: `einstellungen.json` (settings incl. start wallet, default-wallet
+display name) and `importiert.log` (adopted old folders).
 
-## An eine neue Exodus-Version anpassen
+## Adapting to a new Exodus version
 
-Prüfpunkte, falls etwas nicht mehr greift:
+Checkpoints if something stops working:
 
-1. **Session-Name** der Oberfläche (`persist:main` → Ordner `Partitions/main`).
-2. **Selektoren** `selectors.fiatBalances/locale/walletAccounts/enabledAssets/assets`.
-3. **Adress-API** über den React-Provider (`exodus.addressProvider.getReceiveAddress`).
-4. **Fenstertyp** des Hauptfensters (aktuell `BaseWindow`).
-5. **Icon-Pfad** `src/res/deps/img/<asset>-<hash>.svg`.
-6. **Backup-Route** `/settings/backup` für „12 Wörter anzeigen“.
+1. **Session name** of the UI (`persist:main` → folder `Partitions/main`).
+2. **Selectors** `selectors.fiatBalances/locale/walletAccounts/enabledAssets/assets`.
+3. **Address API** via the React provider (`exodus.addressProvider.getReceiveAddress`).
+4. **Window type** of the main window (currently `BaseWindow`).
+5. **Icon path** `src/res/deps/img/<asset>-<hash>.svg`.
+6. **Backup route** `/settings/backup` for "show 12 words".
 
-Das Debug-Log auf dem Desktop (`exodus-wallets-debug.log`) zeigt, welcher Schritt scheitert.
+The debug log on the desktop (`exodus-wallets-debug.log`) shows which step fails.
+
+> Note: source-code comments in `payload/` are currently in German; the user-facing UI, docs and
+> installer output are English.

@@ -88,6 +88,7 @@ const MESSAGES = {
     cannotRenameCurrent: 'The wallet in this window cannot be renamed – open a different wallet to do that.',
     renameRunning: 'This wallet is currently open. Please close its Exodus window first.',
     shortcutFailed: 'The shortcut could not be created.',
+    shortcutWinOnly: 'Desktop shortcuts are only available on Windows.',
     shortcutDescription: (label) => `Exodus wallet: ${label}`,
     notAllowed: 'Not allowed.',
     cannotCloseCurrent: 'This is the wallet of this window – close the window itself instead.',
@@ -122,6 +123,7 @@ const MESSAGES = {
     cannotRenameCurrent: 'Die Wallet in diesem Fenster kann nicht umbenannt werden – öffne dafür eine andere Wallet.',
     renameRunning: 'Diese Wallet ist gerade geöffnet. Bitte zuerst ihr Exodus-Fenster schließen.',
     shortcutFailed: 'Die Verknüpfung konnte nicht erstellt werden.',
+    shortcutWinOnly: 'Desktop-Verknüpfungen gibt es nur unter Windows.',
     shortcutDescription: (label) => `Exodus-Wallet: ${label}`,
     notAllowed: 'Nicht erlaubt.',
     cannotCloseCurrent: 'Das ist die Wallet dieses Fensters – schließe dafür einfach das Fenster.',
@@ -487,11 +489,37 @@ if ($env:XW_REOPEN -eq '1') {
 }
 `
 
+// macOS/Linux: same idea as the PowerShell helper, but as a detached shell script
+const RENAME_HELPER_SH = `
+i=0
+while [ $i -lt 60 ]; do
+  if [ ! -e "$XW_LOCK" ]; then break; fi
+  i=$((i+1)); sleep 0.5
+done
+ok=0
+i=0
+while [ $i -lt 60 ]; do
+  if mv "$XW_FROM" "$XW_TO" 2>/dev/null; then ok=1; break; fi
+  i=$((i+1)); sleep 0.5
+done
+if [ "$XW_REOPEN" = "1" ]; then
+  dir="$XW_FROM"; [ "$ok" = "1" ] && dir="$XW_TO"
+  "$XW_LAUNCHER" --datadir "$dir" >/dev/null 2>&1 &
+fi
+`
+
 function renameCurrentAfterExit (from, to, reopen) {
   const env = { ...process.env, XW_PID: String(process.pid), XW_FROM: from, XW_TO: to, XW_REOPEN: reopen ? '1' : '0', XW_LAUNCHER: launcherPath() }
   env[DIRECT_ENV] = '1'
-  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', RENAME_HELPER_PS],
-    { detached: true, stdio: 'ignore', env, windowsHide: true })
+  let child
+  if (process.platform === 'win32') {
+    child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', RENAME_HELPER_PS],
+      { detached: true, stdio: 'ignore', env, windowsHide: true })
+  } else {
+    // No lockfile-wait id on posix; wait for the folder's Chromium lockfile to disappear instead
+    env.XW_LOCK = path.join(from, 'lockfile')
+    child = spawn('sh', ['-c', RENAME_HELPER_SH], { detached: true, stdio: 'ignore', env })
+  }
   child.unref()
 }
 
@@ -774,6 +802,7 @@ function buildState () {
     settings,
     nextName: nextFreeName(wallets),
     locale: { language: uiLanguage, currency: uiCurrency },
+    platform: process.platform,
   }
 }
 
@@ -963,6 +992,8 @@ const api = {
   },
 
   async shortcut (event, id) {
+    // Desktop shortcuts use the Windows .lnk API; on macOS/Linux this is not available
+    if (process.platform !== 'win32' || typeof shell.writeShortcutLink !== 'function') throw new Error(t('shortcutWinOnly'))
     const w = findWallet(id)
     const label = w.isStandard ? standardLabel() : w.name
     const file = path.join(app.getPath('desktop'), `Exodus - ${label.replace(/[\\/:*?"<>|]/g, '_')}.lnk`)
