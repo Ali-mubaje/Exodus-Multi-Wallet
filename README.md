@@ -9,7 +9,8 @@ gradient. It automatically picks up the active Exodus theme as well as the langu
 
 > **In short:** a wallet switcher that looks and feels like it shipped with Exodus.
 
-**Version 1.0.2 · built and tested for Exodus 26.8.27 (Windows, macOS, Linux).**
+**Version 1.0.2** · tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** · Linux: should
+work but not yet tested against a specific version.
 
 <p align="center">
   <img src="docs/images/sidebar.png" width="330" alt="Wallet sidebar with combined total and wallet list">
@@ -150,8 +151,10 @@ Windows-only conveniences that simply don't appear elsewhere:
 - Everything else – switching, balances, addresses, rename, delete, start wallet, custom pictures –
   works on all platforms.
 
-Developed and tested most heavily on **Windows with Exodus 26.8.x**. On macOS/Linux the installer and
-core features work, but have seen less real-world testing – please report issues.
+Tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** (the latest on each at the time).
+**Linux** has not been tested against a specific version yet; the installer detects the version and
+warns if it differs from a tested one, but does not block. On any untested version, keep an eye out and
+please report issues.
 
 ---
 

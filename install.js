@@ -34,8 +34,11 @@ const TARGET_DIR = ['src', 'app', 'wallet-switcher']
 const MARKER = '/*exodus-wallets-sidebar*/'
 const BLOCK_SIZE = 4 * 1024 * 1024
 
-// The Exodus version this add-on was built and tested against.
-const TESTED_EXODUS = '26.8.27'
+// The Exodus versions this add-on was built and tested against
+// (Windows' latest is 26.8.27, macOS' latest is 26.8.26).
+const TESTED_EXODUS = ['26.8.26', '26.8.27']
+const TESTED_LABEL = TESTED_EXODUS.join(' / ')
+const isTestedExodus = (v) => TESTED_EXODUS.includes(v)
 
 const log = (...a) => console.log(...a)
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex')
@@ -235,12 +238,12 @@ function install (appDir, opts = {}) {
   // work, and we don't want to lock people out. This is the "is a suitable Exodus here?" check.
   const exodusVer = exodusVersionFromAsar(asarPath)
   if (!exodusVer) {
-    log(`Note: could not read the Exodus version. This add-on was built and tested for Exodus ${TESTED_EXODUS}.`)
-  } else if (exodusVer !== TESTED_EXODUS) {
-    log(`Note: found Exodus ${exodusVer}, but this add-on was built and tested for ${TESTED_EXODUS}.`)
+    log(`Note: could not read the Exodus version. This add-on was built and tested for Exodus ${TESTED_LABEL}.`)
+  } else if (!isTestedExodus(exodusVer)) {
+    log(`Note: found Exodus ${exodusVer}, but this add-on was built and tested for ${TESTED_LABEL}.`)
     log('      It may still work. If the sidebar misbehaves, this version difference is the first thing to check.')
   } else {
-    log(`Found Exodus ${exodusVer} (matches the tested version).`)
+    log(`Found Exodus ${exodusVer} (a tested version).`)
   }
 
   const payload = PAYLOAD_FILES.map((name) => ({ name, buf: fs.readFileSync(path.join(PAYLOAD_DIR, name)) }))
@@ -363,7 +366,7 @@ function status (appDir) {
       if (fs.existsSync(asarPath + '.orig')) state += ', backup present'
     }
     const ver = exodusVersionFromAsar(asarPath)
-    const verNote = ver ? `Exodus ${ver}${ver === TESTED_EXODUS ? '' : ` (tested: ${TESTED_EXODUS})`} – ` : ''
+    const verNote = ver ? `Exodus ${ver}${isTestedExodus(ver) ? '' : ` (tested: ${TESTED_LABEL})`} – ` : ''
     const active = path.resolve(dir) === path.resolve(appDir) ? '  <- will be used' : ''
     log(`${dir}: ${verNote}${state}${active}`)
   }
