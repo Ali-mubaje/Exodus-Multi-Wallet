@@ -1,11 +1,11 @@
 # Architecture & internals
 
-This document explains how Exsodus is built – for anyone reading the code, changing it, or adapting it
+This document explains how Exodus Multi-Wallet is built – for anyone reading the code, changing it, or adapting it
 to a new Exodus version.
 
 ## Overview
 
-Exodus is an Electron app. Exsodus hooks in at two places:
+Exodus is an Electron app. Exodus Multi-Wallet hooks in at two places:
 
 ```
                  install.js

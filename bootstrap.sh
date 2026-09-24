@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Exsodus one-line installer for macOS / Linux.
+# Exodus Multi-Wallet one-line installer for macOS / Linux.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.sh | sh
 #

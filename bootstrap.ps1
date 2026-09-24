@@ -1,4 +1,4 @@
-# Exsodus one-line installer for Windows (PowerShell).
+# Exodus Multi-Wallet one-line installer for Windows (PowerShell).
 #
 #   irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.ps1 | iex
 #
@@ -14,7 +14,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   return
 }
 
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ('exsodus-' + [Guid]::NewGuid().ToString('N'))
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('exodus-mw-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
   $zip = Join-Path $tmp 'src.zip'

@@ -1,6 +1,6 @@
-# Exsodus – a wallet sidebar for Exodus
+# Exodus Multi-Wallet – a wallet sidebar for Exodus
 
-Exsodus adds a sidebar to the [Exodus](https://www.exodus.com/) desktop app that lets you manage
+Exodus Multi-Wallet adds a sidebar to the [Exodus](https://www.exodus.com/) desktop app that lets you manage
 **several independent wallets** (each with its own 12-word phrase) and switch between them with one
 click – without swapping the data folder by hand every time.
 
@@ -84,7 +84,7 @@ macOS and Linux**. No `npm install` needed – the installer only uses Node's bu
 Get the files (clone the repo or download it), so `install.js` and the `payload/` folder sit together:
 
 ```
-exsodus/
+exodus-multi-wallet/
 ├── install.js
 └── payload/
     ├── main.js
