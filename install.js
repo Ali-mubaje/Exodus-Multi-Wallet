@@ -210,6 +210,37 @@ function findAppDir (explicit) {
   return dirs[0]
 }
 
+// On macOS, from …/Exodus.app/Contents/Resources/app.asar find the …/Exodus.app bundle.
+function macAppBundle (asarPath) {
+  let d = path.dirname(asarPath)
+  for (let i = 0; i < 6; i++) {
+    if (d.toLowerCase().endsWith('.app')) return d
+    const up = path.dirname(d)
+    if (up === d) break
+    d = up
+  }
+  return null
+}
+
+// macOS refuses to launch a signed app once app.asar changed ("Exodus is damaged"). Re-sign the bundle
+// ad-hoc so it opens again. This replaces Apple's notarized signature with a local one – reinstalling
+// Exodus from the official DMG restores the original signature. No-op on Windows/Linux.
+function resignMac (asarPath) {
+  if (process.platform !== 'darwin') return
+  const appBundle = macAppBundle(asarPath)
+  if (!appBundle) { log('WARNING: could not locate the .app bundle to re-sign. macOS may say Exodus is "damaged".'); return }
+  try {
+    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appBundle], { stdio: 'ignore' })
+    try { execFileSync('xattr', ['-dr', 'com.apple.quarantine', appBundle], { stdio: 'ignore' }) } catch (e) {}
+    log('Re-signed Exodus (ad-hoc) so macOS will open the patched app.')
+  } catch (e) {
+    log('WARNING: could not re-sign Exodus automatically. macOS may say the app is "damaged".')
+    log('Fix it once in Terminal (you can copy/paste both lines):')
+    log(`  codesign --force --deep --sign - "${appBundle}"`)
+    log(`  xattr -cr "${appBundle}"`)
+  }
+}
+
 // Is an Exodus process currently running? Best-effort and cross-platform.
 function exodusRunning () {
   try {
@@ -332,6 +363,7 @@ function install (appDir, opts = {}) {
 
   fs.renameSync(tmpPath, asarPath)
   log(`Sidebar installed in: ${appDir}`)
+  resignMac(asarPath)
 }
 
 function uninstall (appDir) {
@@ -346,6 +378,9 @@ function uninstall (appDir) {
   if (isPatched(readAsar(backupPath))) throw new Error('The backup is itself modified. Please reinstall Exodus.')
   fs.renameSync(backupPath, asarPath)
   log(`Original restored: ${asarPath}`)
+  // Restoring the original app.asar again breaks the ad-hoc seal, so re-sign once more. To get Apple's
+  // notarized signature back, reinstall Exodus from the official DMG.
+  resignMac(asarPath)
 }
 
 function status (appDir) {

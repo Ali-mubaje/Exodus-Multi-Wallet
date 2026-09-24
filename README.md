@@ -148,6 +148,14 @@ The installer is fully cross-platform. The runtime add-on works on all three sys
 Windows-only conveniences that simply don't appear elsewhere:
 
 - **Desktop shortcuts** (`.lnk`) are Windows-only; the menu entry is hidden on macOS/Linux.
+- **macOS code signing:** Exodus is a signed/notarized app, so changing `app.asar` makes macOS report
+  *“Exodus is damaged and can’t be opened.”* The installer fixes this automatically by **re-signing the
+  app ad-hoc** after patching (this replaces Apple’s signature with a local one; reinstalling Exodus
+  from the official DMG restores the original). If the automatic step ever fails, run once in Terminal:
+  ```sh
+  codesign --force --deep --sign - /Applications/Exodus.app
+  xattr -cr /Applications/Exodus.app
+  ```
 - Everything else – switching, balances, addresses, rename, delete, start wallet, custom pictures –
   works on all platforms.
 
