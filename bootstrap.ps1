@@ -1,4 +1,4 @@
-# Exodus Multi-Wallet one-line installer for Windows (PowerShell).
+# Exodus Multi Wallet one-line installer for Windows (PowerShell).
 #
 #   irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.ps1 | iex
 #

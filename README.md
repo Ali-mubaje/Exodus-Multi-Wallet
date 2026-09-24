@@ -1,6 +1,6 @@
-# Exodus Multi-Wallet – a wallet sidebar for Exodus
+# Exodus Multi Wallet – a wallet sidebar for Exodus
 
-Exodus Multi-Wallet adds a sidebar to the [Exodus](https://www.exodus.com/) desktop app that lets you manage
+Exodus Multi Wallet adds a sidebar to the [Exodus](https://www.exodus.com/) desktop app that lets you manage
 **several independent wallets** (each with its own 12-word phrase) and switch between them with one
 click – without swapping the data folder by hand every time.
 
