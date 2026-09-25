@@ -116,6 +116,31 @@ refuse to patch while the app is open.
   marker, stores `setupDoneAt` in the cache and writes a `type: 'ready'` event. That one is delivered to the
   focused window like a payment – including the wallet's own window.
 
+### Address Guard (integrity of the saved addresses)
+- **Seal:** when a wallet's own window saves its addresses (`fetchAddresses`), it stores
+  `addressesSeal: { v: 1, mac, at }` in `wallet-switcher-cache.json`. `mac` = HMAC-SHA256 over
+  `"xw-seal-v1\n"` + the sorted lines `account|asset|address`, keyed with a random 32-byte key per
+  wallet. The key lives in `wallet-switcher-seal.key` as `XWS1` + `safeStorage.encryptString(hex)`
+  (DPAPI / Keychain); only if the OS has no key store, as plain `XWP1` + hex.
+- **`checkSeal()`** → `ok` · `broken` (MAC wrong, seal removed while the key exists, or key removed while a
+  seal exists) · `none` (never sealed, e.g. from v1.0.2) · `unknown` (key not readable here, e.g. folder
+  copied from another computer).
+- **Comparison with Exodus** (own window, every address refresh, ~5 min): broken seal, or an unsealed
+  list that differs from Exodus → `addressGuard: { state:'tampered', reason:'seal'|'exodus', diffs }`; the
+  saved list is **not** overwritten (evidence) and stays blocked until *Re-read*. Seal intact but Exodus
+  shows another address → `{ state:'changed', changes }` (state E) and the new list is sealed.
+- **IPC** (all behind the origin/session check): `verifyAddresses(id)` → `{ ok, reason, diffs, changes }`
+  (seal + recorded comparison, no Exodus round trip, so it is instant before every copy) ·
+  `rereadAddresses(id)` (own window directly; another window via the `reread` command with progress in
+  `wallet-switcher-reread.json`; a stopped wallet is started in the background first; progress reaches
+  the sidebar as `exodus-wallets:reread-progress` `{i,n}` from `globalThis.__xwAddrProgress`) ·
+  `readClipboard` · `clearClipboard` · `isOwnAddress(addr)` (only wallets that pass the check count) ·
+  `systemNotify({title, body})`. `copyAddress` itself refuses a failed wallet.
+- **Renderer:** the design handoff's `xw-guard.js` / `xw-guard.prod.css` are inlined as `XW.guard` and `@xw:guard` (seal in the sheet sub
+  line, banner, locked rows/export, details layer, clipboard card); `preload.js` calls `XW.guard.check()`
+  before showing/copying/exporting and `XW.guard.watchClipboard()` after copying. Settings:
+  `addressCheck` / `clipboardGuard` in `settings.json` (default on; the seal is always maintained).
+
 ### Incoming-payment notifications
 - **Detect (every window, for its own wallet):** `HOLDINGS_JS` reads the coin amount per portfolio and
   asset (`selectors.balances.getBalances(...).balance`) plus Exodus' own fiat value for it
@@ -235,6 +260,9 @@ refuse to patch while the app is open.
 | `wallet-switcher-pause` | do not start in the background until this timestamp |
 | `wallet-switcher-bgstart` | last background start (prevents double starts) |
 | `wallet-switcher-place.json` | window place/size handed over by *Switch* (used once) |
+| `wallet-switcher-seal.key` | Address Guard key, encrypted by the OS key store |
+| `wallet-switcher-reread.json` | progress/result of a *Re-read from Exodus* asked for by another window |
+| `wallet-switcher-nobackground` | this wallet is excluded from background sync |
 
 Global, under `Exodus-Wallets`: `settings.json` (settings incl. start wallet, default-wallet
 display name), `imported.log` (adopted old folders) and `.incoming/` (short-lived incoming-payment

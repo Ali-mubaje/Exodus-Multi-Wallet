@@ -15,7 +15,7 @@
  */
 
 // BaseWindow exists only from Electron 30 on – Exodus uses it for its main window
-const { app, BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, Notification, shell } = require('electron')
+const { app, BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, Notification, safeStorage, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -130,6 +130,7 @@ const MESSAGES = {
     notifyReceivedHidden: (ticker) => `Received ${ticker}`,
     notifyReadyTitle: (wallet) => `${wallet} is ready`,
     notifyReadyBody: 'Everything loaded – you can close it.',
+    copyBlocked: 'Copying is blocked for this wallet – its saved addresses failed the check. Re-read them from Exodus first.',
   },
   de: {
     standard: 'Standard',
@@ -169,6 +170,7 @@ const MESSAGES = {
     notifyReceivedHidden: (ticker) => `${ticker} erhalten`,
     notifyReadyTitle: (wallet) => `${wallet} ist bereit`,
     notifyReadyBody: 'Alles geladen – du kannst sie schließen.',
+    copyBlocked: 'Kopieren ist für diese Wallet gesperrt – ihre gespeicherten Adressen haben die Prüfung nicht bestanden. Lies sie zuerst neu aus Exodus ein.',
   },
 }
 
@@ -221,7 +223,7 @@ function lastUsed (dir) {
   return newest ? new Date(newest).toISOString() : null
 }
 
-function describe (w) {
+function describe (w, settings) {
   const walletExists = hasWallet(w.dir)
   if (walletExists && exists(path.join(w.dir, RESTORE_MARKER))) {
     try { fs.unlinkSync(path.join(w.dir, RESTORE_MARKER)) } catch (e) {} // restoration is done
@@ -239,6 +241,9 @@ function describe (w) {
     isCurrent: isCurrent(w.dir),
     running,
     background: !!(live && live.hidden),
+    backgroundOff: backgroundOff(w.dir),
+    // Address Guard: saved addresses failed the check (seal broken or different from Exodus)
+    addressCheck: settings && settings.addressCheck === false ? null : (addressVerdict(w.dir).ok ? null : 'failed'),
     status: live ? { state: live.state, left: live.left || 0 } : null,
     setup: setup ? { kind: setup.kind || null, since: setup.since || null } : null,
     hasWallet: walletExists,
@@ -500,6 +505,12 @@ async function checkCommands () {
     } else if (cmd.cmd === 'hide') {
       done()
       hideToBackground()
+    } else if (cmd.cmd === 'reread') {
+      // "Re-read from Exodus", asked for by another window: progress and result go to REREAD_FILE
+      done()
+      const file = path.join(currentDir(), REREAD_FILE)
+      const res = await rereadHere((i, n) => { try { writeJson(file, { i, n, at: Date.now() }) } catch (e) {} })
+      try { writeJson(file, { done: true, ok: !!res.ok, count: res.count || 0, at: Date.now() }) } catch (e) {}
     } else if (cmd.cmd === 'showBackup') {
       // leave the file until the UI is ready (entering the password can take a while)
       if (await showBackupHere()) done()
@@ -525,6 +536,8 @@ const PAUSE_MS = 2 * 60 * 1000
 const BG_CLAIM_FILE = 'wallet-switcher-bgstart' // who last started the wallet in the background
 const BG_EVERY_MS = 20 * 1000
 const BG_RETRY_MS = 90 * 1000
+const NO_BG_FILE = 'wallet-switcher-nobackground' // this wallet is never synced in the background (moves with renames)
+const backgroundOff = (dir) => exists(path.join(dir, NO_BG_FILE))
 
 let hiddenMode = false
 let booting = false // hidden start: Exodus' UI has not finished starting yet
@@ -763,7 +776,7 @@ function ensureBackground () {
   if (hiddenMode || !uiContents || uiContents.isDestroyed()) return
   if (readSettings().backgroundSync === false) return
   for (const w of walletDirs()) {
-    if (w.external || isRunning(w.dir) || !hasWallet(w.dir) || exists(path.join(w.dir, RESTORE_MARKER)) || isPaused(w.dir)) continue
+    if (w.external || isRunning(w.dir) || !hasWallet(w.dir) || exists(path.join(w.dir, RESTORE_MARKER)) || isPaused(w.dir) || backgroundOff(w.dir)) continue
     // several visible windows check at the same time – whoever starts first records it in the wallet
     const claim = path.join(w.dir, BG_CLAIM_FILE)
     try { if (Date.now() - fs.statSync(claim).mtimeMs < BG_RETRY_MS) continue } catch (e) {}
@@ -777,6 +790,10 @@ function ensureBackground () {
 let lonelySince = 0
 function backgroundWatchdog () {
   if (!hiddenMode) { lonelySince = 0; return }
+  if (backgroundOff(currentDir())) {
+    debug('Background: switched off for this wallet – quitting')
+    return app.quit()
+  }
   if (readSettings().backgroundSync === false) {
     debug('Background: switched off – quitting')
     return app.quit()
@@ -958,9 +975,13 @@ const ADDRESSES_JS = `(async () => {
     try { properName = s.walletAccounts.getProperName(st) } catch (e) {}
     const withTimeout = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 3000))])
     const out = []
+    // Progress (step i of n) for "Re-read from Exodus" – main.js polls it while re-reading
+    const enabledNames = Object.keys(enabled).filter((n) => enabled[n])
+    const progress = globalThis.__xwAddrProgress = { i: 0, n: names.length * enabledNames.length }
     // Portfolio outer, coin inner – this keeps a portfolio's addresses together in the list
     for (const wa of names) {
-      for (const assetName of Object.keys(enabled).filter((n) => enabled[n])) {
+      for (const assetName of enabledNames) {
+        progress.i++
         const asset = all[assetName]
         if (!asset) continue
         if (out.length >= 600) break
@@ -982,6 +1003,7 @@ const ADDRESSES_JS = `(async () => {
         } catch (e) {}
       }
     }
+    progress.i = progress.n
     return { addresses: out }
   } catch (e) {
     return { error: String((e && e.message) || e) }
@@ -1172,6 +1194,99 @@ async function snapshotBalance (wc) {
   })
 }
 
+// ---------------------------------------------------------------------------------------------
+// Address Guard – integrity seal over the saved receive addresses. Clipper malware swaps crypto
+// addresses (in files or in the clipboard) so payments go to the attacker. When a wallet's own window
+// saves its addresses, it seals them: HMAC-SHA256 over all addresses (account|asset|address, sorted)
+// with a random 32-byte key per wallet. The key is protected by the operating system via Electron's
+// safeStorage (Windows DPAPI / macOS Keychain) and stored encrypted as wallet-switcher-seal.key. Every
+// reader checks the seal before showing/copying/exporting. Each wallet's own window also compares the
+// saved list with Exodus on every address refresh (see fetchAddresses): a broken seal or a difference
+// that isn't a legitimate Exodus change marks the wallet as tampered until the user re-reads.
+// ---------------------------------------------------------------------------------------------
+
+const SEAL_KEY_FILE = 'wallet-switcher-seal.key'
+const REREAD_FILE = 'wallet-switcher-reread.json' // progress/result of a re-read requested by another window
+const sealKeys = new Map()
+
+function encryptSealKey (hex) {
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) return Buffer.concat([Buffer.from('XWS1'), safeStorage.encryptString(hex)])
+  } catch (e) {}
+  // No OS key store (e.g. Linux without a keyring): plain key – still catches edits by programs that don't know it
+  return Buffer.from('XWP1' + hex)
+}
+function decryptSealKey (buf) {
+  const tag = buf.slice(0, 4).toString('latin1')
+  if (tag === 'XWS1') return safeStorage.decryptString(buf.slice(4))
+  if (tag === 'XWP1') return buf.slice(4).toString('latin1')
+  throw new Error('unknown seal key format')
+}
+// The wallet's key (hex). create: make one if there is none (or if the existing one can't be read –
+// e.g. the folder came from another computer or user account). Throws if it exists but can't be read.
+function sealKey (dir, create) {
+  const file = path.join(dir, SEAL_KEY_FILE)
+  let st = null
+  try { st = fs.statSync(file) } catch (e) {}
+  if (st) {
+    const hit = sealKeys.get(file)
+    if (hit && hit.mtime === st.mtimeMs) return hit.key
+    try {
+      const key = decryptSealKey(fs.readFileSync(file))
+      if (!/^[0-9a-f]{64}$/.test(key)) throw new Error('bad seal key')
+      sealKeys.set(file, { mtime: st.mtimeMs, key })
+      return key
+    } catch (e) {
+      if (!create) throw e
+    }
+  } else if (!create) {
+    return null
+  }
+  const key = crypto.randomBytes(32).toString('hex')
+  fs.writeFileSync(file, encryptSealKey(key))
+  sealKeys.delete(file)
+  return key
+}
+function sealMac (key, addresses) {
+  const lines = addresses.map((a) => [a.account, a.asset, a.address].join('|')).sort()
+  return crypto.createHmac('sha256', Buffer.from(key, 'hex')).update('xw-seal-v1\n' + lines.join('\n')).digest('hex')
+}
+function makeSeal (dir, addresses) {
+  return { v: 1, mac: sealMac(sealKey(dir, true), addresses), at: new Date().toISOString() }
+}
+// 'ok' | 'broken' | 'none' (never sealed) | 'unknown' (key exists but the OS key store can't read it)
+function checkSeal (dir, cache) {
+  const list = cache && Array.isArray(cache.addresses) ? cache.addresses : []
+  if (!list.length) return 'none'
+  let key
+  try { key = sealKey(dir, false) } catch (e) { return 'unknown' }
+  const seal = cache.addressesSeal
+  if (!key) return seal ? 'broken' : 'none' // a seal without its key: the key file was removed
+  if (!seal || typeof seal.mac !== 'string' || !/^[0-9a-f]{64}$/.test(seal.mac)) return 'broken' // key but no seal: seal removed
+  const want = Buffer.from(sealMac(key, list), 'hex')
+  const got = Buffer.from(seal.mac, 'hex')
+  return crypto.timingSafeEqual(want, got) ? 'ok' : 'broken'
+}
+// Saved vs. fresh from Exodus, per portfolio and coin – only entries present in both
+function addressDiffs (saved, fresh) {
+  const now = new Map(fresh.map((a) => [a.account + '|' + a.asset, a]))
+  const out = []
+  for (const s of saved) {
+    const f = now.get(s.account + '|' + s.asset)
+    if (f && f.address !== s.address) out.push({ asset: s.asset, coin: s.label, ticker: s.ticker, account: s.account, portfolio: s.portfolio || s.account, saved: s.address, exodus: f.address })
+  }
+  return out
+}
+// Result of the check for one wallet (any window may ask): { ok, reason, diffs, changes }
+function addressVerdict (dir) {
+  const cache = readJson(path.join(dir, CACHE_FILE)) || {}
+  const g = cache.addressGuard
+  if (g && g.state === 'tampered') return { ok: false, reason: g.reason === 'seal' ? 'seal' : 'exodus', diffs: Array.isArray(g.diffs) ? g.diffs : [] }
+  if (checkSeal(dir, cache) === 'broken') return { ok: false, reason: 'seal', diffs: [] }
+  const recent = g && g.state === 'changed' && Date.now() - Date.parse(g.at || 0) < 24 * 60 * 60 * 1000
+  return { ok: true, changes: recent && Array.isArray(g.changes) ? g.changes : [] }
+}
+
 let lastAddressesAt = 0
 let addressesRun = null // query in progress – a second call simply waits alongside
 function snapshotAddresses (wc, force) {
@@ -1181,17 +1296,73 @@ function snapshotAddresses (wc, force) {
   addressesRun = fetchAddresses(wc).finally(() => { addressesRun = null })
   return addressesRun
 }
-async function fetchAddresses (wc) {
+// repair: "Re-read from Exodus" – take Exodus' addresses as they are, re-seal, clear the alarm.
+// Returns the number of saved addresses (0 if nothing was saved).
+async function fetchAddresses (wc, { repair = false } = {}) {
   const res = await runInUi(wc, ADDRESSES_JS, 90000)
   if (!res || res.error || !Array.isArray(res.addresses)) {
     logStatus('Addresses', 'none – ' + ((res && res.error) || 'empty'))
-    return
+    return 0
   }
   lastAddressesAt = Date.now()
   const perPortfolio = {}
   for (const a of res.addresses) perPortfolio[a.portfolio || a.account] = (perPortfolio[a.portfolio || a.account] || 0) + 1
   logStatus('Addresses', `ok (${res.addresses.length}) – ` + (Object.entries(perPortfolio).map(([p, n]) => `${p}: ${n}`).join(', ') || 'no portfolios'))
-  if (res.addresses.length) updateCache({ addresses: res.addresses, addressesAt: new Date().toISOString() })
+  const fresh = res.addresses
+  if (!fresh.length) return 0
+  const prev = readJson(path.join(currentDir(), CACHE_FILE)) || {}
+  const saved = Array.isArray(prev.addresses) ? prev.addresses : []
+  const now = new Date().toISOString()
+  const patch = { addresses: fresh, addressesAt: now }
+  if (repair) {
+    patch.addressGuard = null
+    debug(`Address check: ${currentWalletLabel()} re-read from Exodus and re-sealed`)
+  } else if (saved.length) {
+    const seal = checkSeal(currentDir(), prev)
+    const diffs = addressDiffs(saved, fresh)
+    // Already flagged: stays blocked (and the evidence stays on disk) until the user re-reads
+    if (prev.addressGuard && prev.addressGuard.state === 'tampered') return 0
+    if (seal === 'broken' || (seal !== 'ok' && diffs.length)) {
+      const reason = seal === 'broken' ? 'seal' : 'exodus'
+      updateCache({ addressGuard: { state: 'tampered', reason, diffs, at: now } })
+      debug(`Address check FAILED (${currentWalletLabel()}): ${reason}, ${diffs.length} address(es) differ from Exodus`)
+      return 0
+    }
+    // Sealed and intact, but Exodus now shows another address (e.g. a new address format): not an attack
+    if (diffs.length) {
+      patch.addressGuard = { state: 'changed', changes: diffs.map((d) => ({ asset: d.asset, coin: d.coin, ticker: d.ticker, portfolio: d.portfolio, before: d.saved, now: d.exodus })), at: now }
+      debug(`Address check: Exodus changed ${diffs.length} address(es) of ${currentWalletLabel()}`)
+    }
+  }
+  try {
+    patch.addressesSeal = makeSeal(currentDir(), fresh)
+  } catch (e) {
+    debug('Address seal failed: ' + e.message)
+  }
+  updateCache(patch)
+  return fresh.length
+}
+
+// "Re-read from Exodus" in this window's own wallet. progress(i, n) while Exodus derives the addresses.
+async function rereadHere (progress) {
+  const wc = uiContents
+  if (!wc || wc.isDestroyed()) return { ok: false }
+  if (addressesRun) { try { await addressesRun } catch (e) {} } // let a running refresh finish first
+  const timer = setInterval(async () => {
+    const p = await runInUi(wc, 'globalThis.__xwAddrProgress || null', 500)
+    if (p && typeof p.i === 'number' && typeof p.n === 'number') progress(p.i, p.n)
+  }, 250)
+  try {
+    const run = fetchAddresses(wc, { repair: true })
+    addressesRun = run
+    const count = await run
+    return count ? { ok: true, count } : { ok: false }
+  } catch (e) {
+    return { ok: false }
+  } finally {
+    clearInterval(timer)
+    addressesRun = null
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1674,7 +1845,15 @@ function rememberUi (wc) {
 // ---------------------------------------------------------------------------------------------
 
 function readSettings () {
-  return { hideBalances: false, startWallet: 'standard', standardName: null, backgroundSync: true, ...(readJson(globalFile(SETTINGS_FILE)) || {}) }
+  return {
+    hideBalances: false,
+    startWallet: 'standard',
+    standardName: null,
+    backgroundSync: true,
+    addressCheck: true, // Address Guard: seal + match with Exodus before copying
+    clipboardGuard: true, // Address Guard: watch the clipboard right after copying
+    ...(readJson(globalFile(SETTINGS_FILE)) || {}),
+  }
 }
 
 function writeSettings (patch) {
@@ -1686,7 +1865,7 @@ function writeSettings (patch) {
 
 function buildState () {
   const settings = readSettings()
-  const wallets = walletDirs().map(describe)
+  const wallets = walletDirs().map((w) => describe(w, settings))
   const startExists = wallets.some((w) => w.id === settings.startWallet)
   for (const w of wallets) w.isStart = startExists ? w.id === settings.startWallet : w.isStandard
   return {
@@ -1852,11 +2031,95 @@ const api = {
 
   async copyAddress (event, id, asset, account) {
     const w = findWallet(id)
+    // Address Guard: never copy from a wallet whose saved addresses failed the check (also enforced here)
+    if (readSettings().addressCheck !== false && !addressVerdict(w.dir).ok) throw new Error(t('copyBlocked'))
     const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
     const hit = (Array.isArray(cache.addresses) ? cache.addresses : []).find((a) => a.asset === asset && a.account === account)
     if (!hit) throw new Error(t('addressGone'))
     clipboard.writeText(hit.address)
     return { ticker: hit.ticker, address: hit.address }
+  },
+
+  // ----- Address Guard -----
+
+  // Check before showing, copying and exporting: seal + the last comparison with Exodus (done by the
+  // wallet's own window on every address refresh). Fast – no Exodus round trip per copy.
+  async verifyAddresses (event, id) {
+    const w = findWallet(id)
+    if (readSettings().addressCheck === false) return { ok: true, changes: [] }
+    const v = addressVerdict(w.dir)
+    const withIcon = (list) => (list || []).map((d) => ({ ...d, icon: iconFor(d.asset, w.dir) }))
+    return v.ok ? { ok: true, changes: withIcon(v.changes) } : { ok: false, reason: v.reason, diffs: withIcon(v.diffs) }
+  },
+
+  // Read all addresses fresh from Exodus, overwrite, re-seal. Progress goes to the asking window as
+  // 'exodus-wallets:reread-progress' {i, n}. A wallet that isn't running is started in the background.
+  async rereadAddresses (event, id) {
+    const w = findWallet(id)
+    const progress = (i, n) => { try { if (!event.sender.isDestroyed()) event.sender.send('exodus-wallets:reread-progress', { i, n }) } catch (e) {} }
+    if (isCurrent(w.dir)) return rereadHere(progress)
+    if (w.external) return { ok: false }
+    if (!isRunning(w.dir)) {
+      resumeBackground(w.dir)
+      launch(w.dir, { hidden: true })
+    }
+    const ready = await waitUntil(() => { const l = readLive(w.dir); return !!(l && l.state === 'ready') }, 120 * 1000)
+    if (!ready) return { ok: false }
+    const file = path.join(w.dir, REREAD_FILE)
+    try { fs.unlinkSync(file) } catch (e) {}
+    sendCommand(w.dir, 'reread')
+    const end = Date.now() + 150 * 1000
+    while (Date.now() < end) {
+      await sleep(250)
+      const st = readJson(file)
+      if (!st) continue
+      if (typeof st.i === 'number') progress(st.i, st.n)
+      if (st.done) {
+        try { fs.unlinkSync(file) } catch (e) {}
+        return { ok: !!st.ok, count: st.count || 0 }
+      }
+    }
+    return { ok: false }
+  },
+
+  // Clipboard watcher: reads what is in the clipboard right after copying (never stored or logged)
+  async readClipboard () {
+    return clipboard.readText()
+  },
+
+  async clearClipboard () {
+    clipboard.clear()
+    return true
+  },
+
+  // Is this address one of the user's own (saved in any wallet)? Only wallets whose check passes count –
+  // a tampered list must not whitelist an attacker's address.
+  async isOwnAddress (event, addr) {
+    const key = (x) => { const s = String(x || '').trim(); return /^0x[0-9a-f]+$/i.test(s) ? s.toLowerCase() : s }
+    const want = key(addr)
+    if (!want) return false
+    for (const w of walletDirs()) {
+      if (!addressVerdict(w.dir).ok) continue
+      const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
+      for (const a of (Array.isArray(cache.addresses) ? cache.addresses : [])) if (key(a.address) === want) return true
+    }
+    return false
+  },
+
+  // Warning as a system notification (Windows next to the clock / macOS). Texts come from the sidebar
+  // and never contain an address.
+  async systemNotify (event, note) {
+    const title = String((note && note.title) || '').slice(0, 120)
+    const body = String((note && note.body) || '').slice(0, 240)
+    if (!title || !Notification || typeof Notification.isSupported !== 'function' || !Notification.isSupported()) return false
+    const n = new Notification({ title, body })
+    systemNotes.add(n)
+    const drop = () => systemNotes.delete(n)
+    n.on('click', () => { drop(); focusWindows() })
+    n.on('close', drop)
+    n.show()
+    setTimeout(drop, 10 * 60 * 1000)
+    return true
   },
 
   // Plain text to the clipboard (used by the multi-address export – one address per line)
@@ -1943,12 +2206,32 @@ const api = {
     const next = {}
     if (patch && typeof patch.hideBalances === 'boolean') next.hideBalances = patch.hideBalances
     if (patch && typeof patch.backgroundSync === 'boolean') next.backgroundSync = patch.backgroundSync
+    if (patch && typeof patch.addressCheck === 'boolean') next.addressCheck = patch.addressCheck
+    if (patch && typeof patch.clipboardGuard === 'boolean') next.clipboardGuard = patch.clipboardGuard
     const res = writeSettings(next)
     if (next.backgroundSync === true) setTimeout(ensureBackground, 500)
     return res
   },
 
   // Hide the window of another open wallet – it keeps running and syncing
+  // Background sync for one wallet on/off. Off: a background instance of it quits; a visible window
+  // stays open. On: it may start in the background again right away.
+  async setBackground (event, id, enabled) {
+    const w = findWallet(id)
+    if (w.external) throw new Error(t('notAllowed'))
+    const file = path.join(w.dir, NO_BG_FILE)
+    if (enabled) {
+      try { fs.unlinkSync(file) } catch (e) {}
+      resumeBackground(w.dir)
+      setTimeout(ensureBackground, 500)
+    } else {
+      fs.writeFileSync(file, '')
+      const live = readLive(w.dir)
+      if (!isCurrent(w.dir) && live && live.hidden) sendCommand(w.dir, 'quit')
+    }
+    return { enabled: !!enabled }
+  },
+
   async hide (event, id) {
     const w = findWallet(id)
     if (isCurrent(w.dir)) throw new Error(t('notAllowed'))
@@ -2138,5 +2421,6 @@ module.exports = {
     lockAlive, iconFor, ensureBackground, backgroundWatchdog, enterHiddenMode, revealWindows, hideToBackground, keepHidden,
     isHidden: () => hiddenMode, live: () => liveStatus, setBooting: (on) => { booting = on },
     exodusReceived, isCardTarget, updateFocus, soundHookJs,
+    checkSeal, makeSeal, addressVerdict, addressDiffs, fetchAddresses, rereadHere,
   },
 }

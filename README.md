@@ -37,8 +37,25 @@ work but not yet tested against a specific version.
   payments are detected even for wallets you don't have open. Open a background wallet from the sidebar
   and its window simply appears; *Move to background* hides it again. Wallets you explicitly *close* stay
   closed until you open them again. When the last Exodus window closes, the background wallets quit too.
-  Switch it off in the sidebar (*Sync all wallets in the background*). Wallets with a password stay
-  locked in the background until you open them once and unlock them – the sidebar marks them.
+  Switch it off for all wallets in the settings (⚙ in the sidebar header), or for a single wallet in its
+  ⋯ menu (*Don't sync in the background*). Wallets with a password stay locked in the background until
+  you open them once and unlock them – the sidebar marks them.
+- **Address Guard** – protects the saved receive addresses against "clipper" malware, which swaps crypto
+  addresses so payments go to the attacker:
+  - **Integrity seal** – when a wallet saves its addresses, they are sealed (HMAC-SHA256 over all of
+    them, with a key kept by the operating system: Windows DPAPI / macOS Keychain). Before every show,
+    copy and export the seal is checked (*Verified · 2 min ago* in the address view).
+  - **Match with Exodus** – each running wallet regularly re-reads its addresses from Exodus and
+    compares. If the saved addresses were changed or don't match Exodus, copying and export are blocked
+    for that wallet, a red banner explains it (*Show details*: saved vs. Exodus, difference highlighted)
+    and *Re-read from Exodus* restores them. The wallet row and the wallet button get a red mark.
+    If Exodus itself changed an address (e.g. a new address format), you get a neutral note instead.
+  - **Clipboard watcher** – for ~2 s after copying, while Exodus is in front, the sidebar checks whether
+    another program swaps the address in the clipboard. If a different address of the same format that
+    isn't one of yours appears, a persistent warning shows up (plus a system notification, never with
+    the address) – with a special view for "lookalike" addresses that keep the start and end.
+    Copying something else yourself, switching apps or copying one of your own addresses never triggers it.
+  - Both checks are **on by default** and can be switched off in the settings (⚙).
 - **Incoming-payment notifications** – when another wallet receives funds, the Exodus window you're
   working in shows a small card at the top left: coin (with the original Exodus icon), amount, value at
   the time it arrived, wallet and portfolio – together with Exodus' own receive sound, in the same moment.
@@ -248,6 +265,13 @@ these.
   detected payments between windows through small local files; nothing leaves the computer.
 - Background sync starts the normal Exodus app for each wallet, just without showing its window – it
   never enters or stores passwords; a password-protected wallet stays locked until you unlock it.
+- **Address Guard:** saved receive addresses are sealed with an HMAC whose key is protected by the
+  operating system (DPAPI / Keychain via Electron `safeStorage`) and checked before every copy; the
+  main process refuses to copy from a wallet that failed the check. The clipboard is only read for ~2 s
+  right after you copy, only to compare – its contents are never stored, logged or sent anywhere, and
+  warnings never contain addresses. Limits: malware running as your user with full control could in
+  principle also use the OS key store – the comparison with Exodus is the second line of defence, and
+  the address shown in Exodus (Receive) is always the one to trust.
 - “Show 12 words” only opens Exodus' own backup screen – Exodus handles the password prompt.
 - Delete means **trash/recycle bin**, never a hard delete. If moving to the bin fails, nothing happens.
 - Actions only accept calls from the real Exodus UI (verified origin and session).
