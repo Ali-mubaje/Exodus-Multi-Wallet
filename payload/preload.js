@@ -61,7 +61,16 @@
     reset: svg('<path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/>'),
     trash: svg('<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>'),
     list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
+    alert: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><path d="M12 16.2h.01"/>'),
+    info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/>'),
   }
+
+  // Kopier-Icon, das sich beim Kopieren in ein Häkchen verwandelt (Handoff @xw:morph): Vorder- und
+  // Rückseite von ICON.copy plus ein Häkchen, das per stroke-dashoffset gezeichnet wird
+  const MORPH = (size = 16) =>
+    `<svg class="xw-morph" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+    '<rect class="xw-m-front" x="8" y="8" width="13" height="13" rx="2"/><path class="xw-m-back" d="M4 16V5a1 1 0 0 1 1-1h11"/>' +
+    '<path class="xw-m-check" d="m5 12 5 5 9-10" pathLength="1"/></svg>'
 
   // Farben kommen aus Exodus' eigenen Theme-Variablen (exodus.css, :root/.exodus-theme-*), damit die
   // Seitenleiste jedes Exodus-Theme mitmacht. Die Fallbacks sind die Werte des Standard-Themes "origin".
@@ -97,14 +106,11 @@
 #xw-toggle svg{opacity:.4;transition:opacity .1s,color .2s}
 #xw-toggle:hover{background:rgba(255,255,255,.05)!important}
 #xw-toggle:hover svg,#xw-root.xw-open #xw-toggle svg{opacity:1}
-#xw-toggle:active{transform:scale(.94)}
 #xw-toggle:focus-visible{outline:1px solid var(--xw-cyan);outline-offset:2px}
 #xw-toggle .xw-count{position:absolute;top:1px;right:-1px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--xw-grad);font-family:var(--xw-font-cond);font-size:10px;font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px #0c0e0f}
 
-#xw-backdrop{position:fixed!important;inset:0!important;z-index:2147483646!important;background:rgba(8,9,10,.6)!important;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .3s var(--xw-ease)!important}
-#xw-panel{position:fixed!important;top:0!important;left:0!important;bottom:0!important;z-index:2147483647!important;width:380px!important;max-width:94vw!important;display:flex!important;flex-direction:column!important;background-color:var(--xw-bg)!important;background-image:radial-gradient(120% 50% at 0 0,rgba(102,25,255,.10),transparent 60%),radial-gradient(90% 35% at 100% 100%,rgba(0,191,255,.06),transparent 70%)!important;border-right:1px solid var(--xw-line)!important;box-shadow:none;visibility:hidden;transform:translateX(-102%);transition:transform .34s var(--xw-ease),box-shadow .34s,visibility 0s .34s!important;outline:none!important;user-select:none!important}
-#xw-root.xw-open #xw-panel{transform:none;visibility:visible;box-shadow:24px 0 64px rgba(0,0,0,.5);transition:transform .34s var(--xw-ease),box-shadow .34s,visibility 0s!important}
-#xw-root.xw-open #xw-backdrop{opacity:1;pointer-events:auto}
+#xw-backdrop{position:fixed!important;inset:0!important;z-index:2147483646!important;background:rgba(8,9,10,.6)!important;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#xw-panel{position:fixed!important;top:0!important;left:0!important;bottom:0!important;z-index:2147483647!important;width:380px!important;max-width:94vw!important;display:flex!important;flex-direction:column!important;background-color:var(--xw-bg)!important;background-image:radial-gradient(120% 50% at 0 0,rgba(102,25,255,.10),transparent 60%),radial-gradient(90% 35% at 100% 100%,rgba(0,191,255,.06),transparent 70%)!important;border-right:1px solid var(--xw-line)!important;box-shadow:none;outline:none!important;user-select:none!important}
 
 #xw-root .xw-head{position:relative;display:flex;align-items:center;gap:6px;height:80px;flex:none;padding:0 16px 0 24px}
 #xw-root .xw-head:after{content:"";position:absolute;left:24px;right:24px;bottom:0;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,0))}
@@ -129,7 +135,6 @@
 #xw-root .xw-item{position:relative;display:flex;gap:14px;align-items:flex-start;padding:14px 12px;margin-bottom:2px;border-radius:10px;cursor:pointer;transition:background .2s}
 #xw-root .xw-item:hover{background:var(--xw-hover)}
 #xw-root .xw-item.is-current{background:var(--xw-surface);cursor:default}
-#xw-root .xw-item.is-current:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;border-radius:2px;background:linear-gradient(180deg,var(--xw-cyan),var(--xw-violet))}
 #xw-root .xw-avatar{position:relative;width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--xw-font-cond);font-weight:700;font-size:14px;letter-spacing:.02em;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 #xw-root .xw-item.is-running .xw-avatar:after,#xw-root .xw-item.is-current .xw-avatar:after{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:var(--xw-green);box-shadow:0 0 0 2px var(--xw-bg)}
 #xw-root .xw-item.is-current .xw-avatar:after{background:var(--xw-cyan);box-shadow:0 0 0 2px var(--xw-surface)}
@@ -151,28 +156,11 @@
 
 #xw-root .xw-bottom{position:relative;flex:none;padding:16px 24px 6px}
 #xw-root .xw-bottom:before{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,0))}
-#xw-root .xw-notice{position:relative;margin-bottom:12px;padding:10px 12px 10px 14px;border-radius:8px;font-size:12.5px;background:rgba(255,255,255,.04);color:var(--xw-text);overflow:hidden}
-#xw-root .xw-notice:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--xw-grad)}
-#xw-root .xw-notice.is-ok:before{background:var(--xw-green)}
-#xw-root .xw-notice.is-error{color:#ffd0d0}
-#xw-root .xw-notice.is-error:before{background:var(--xw-red)}
-#xw-root .xw-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:44px;padding:0 20px;margin-bottom:8px;border-radius:30px;cursor:pointer;font-size:13.5px;font-weight:500;color:rgba(255,255,255,.6);background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);transition:color .2s,background .2s,border-color .2s}
+#xw-root .xw-btn{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:44px;padding:0 20px;margin-bottom:8px;border-radius:30px;cursor:pointer;font-size:13.5px;font-weight:500;color:rgba(255,255,255,.6);background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);transition:color .2s,background .2s,border-color .2s}
 #xw-root .xw-btn:hover{color:#fff;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.14)}
 #xw-root .xw-btn.is-primary{height:48px;color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,var(--xw-grad-soft) border-box}
 #xw-root .xw-btn.is-primary:hover{background:linear-gradient(var(--xw-deep),var(--xw-deep)) padding-box,var(--xw-grad) border-box}
 #xw-root .xw-btn.is-primary svg{color:var(--xw-cyan)}
-#xw-root .xw-btn.is-copied{color:#fff;border:1px solid transparent;background:linear-gradient(90deg,#2fae7a,var(--xw-green))!important;transition:background .2s;animation:xw-glow .9s ease-out 1}
-#xw-root .xw-btn.is-copied .xw-btn-ico{display:inline-flex;animation:xw-pop .2s var(--xw-ease)}
-#xw-root .xw-btn{transition:color .2s,background .2s,border-color .2s,transform .1s}
-#xw-root .xw-btn:active{transform:scale(.98)}
-/* Kopier-Bestätigung: ein Lichtstrahl läuft zweimal um den Rand (Winkel per @property animiert) */
-#xw-root .xw-beam{position:relative;isolation:isolate}
-#xw-root .xw-beam::after{content:"";position:absolute;inset:-2px;border-radius:inherit;padding:3px;pointer-events:none;
-  background:conic-gradient(from var(--xw-beam),transparent 0deg 225deg,rgba(0,191,255,.45) 262deg,#00bfff 298deg,#fff 328deg,#9dffd6 346deg,transparent 360deg);
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
-  filter:drop-shadow(0 0 7px rgba(125,255,201,.95));animation:xw-beam 1.25s cubic-bezier(.45,.05,.35,1) 1 both}
-@keyframes xw-beam{0%{--xw-beam:0deg;opacity:0}8%{opacity:1}86%{opacity:1}100%{--xw-beam:720deg;opacity:0}}
-@keyframes xw-glow{from{box-shadow:0 0 0 0 rgba(58,210,159,.55)}to{box-shadow:0 0 0 12px rgba(58,210,159,0)}}
 #xw-root .xw-btn.is-danger{color:#fff;border:1px solid transparent;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,linear-gradient(-90deg,rgba(255,77,106,.75),rgba(255,129,129,.55)) border-box}
 #xw-root .xw-btn.is-danger:hover{background:linear-gradient(rgba(255,77,106,.12),rgba(255,77,106,.12)) padding-box,linear-gradient(-90deg,#ff4d6a,#ff8181) border-box}
 #xw-root .xw-input::placeholder{color:rgba(255,255,255,.25)}
@@ -210,23 +198,14 @@
 #xw-root .xw-item:hover .xw-fast,#xw-root .xw-item:focus-within .xw-fast{opacity:1;transform:none;pointer-events:auto}
 #xw-root .xw-fast:hover{background:linear-gradient(var(--xw-deep),var(--xw-deep)) padding-box,var(--xw-grad) border-box}
 #xw-root .xw-fast:focus-visible{outline:1px solid var(--xw-cyan);outline-offset:2px}
-#xw-root .xw-menu{position:absolute;z-index:6;width:250px;padding:6px;border-radius:10px;background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 40px rgba(0,0,0,.55);transform-origin:top right;animation:xw-pop .16s var(--xw-ease) both}
-#xw-root .xw-menu.is-up{transform-origin:bottom right}
-#xw-root .xw-menu-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border-radius:6px;font-size:13px;color:rgba(255,255,255,.82);cursor:pointer;transition:background .12s,color .12s}
-#xw-root .xw-menu-item svg{opacity:.55}
-#xw-root .xw-menu-item:hover,#xw-root .xw-menu-item:focus-visible{background:var(--xw-hover);color:#fff}
-#xw-root .xw-menu-item:hover svg{opacity:1;color:var(--xw-cyan)}
-#xw-root .xw-menu-item.is-danger:hover,#xw-root .xw-menu-item.is-danger:hover svg{color:var(--xw-red)}
+#xw-root .xw-menu-item:focus-visible{background:var(--xw-hover);color:#fff}
 #xw-root .xw-menu-item.is-checked{color:var(--xw-cyan);cursor:default}
 #xw-root .xw-menu-item.is-checked svg{opacity:1}
 #xw-root .xw-menu-item.is-checked:hover{background:transparent}
-#xw-root .xw-menu-sep{height:1px;margin:5px 6px;background:rgba(255,255,255,.07)}
 
 #xw-root .xw-form-buttons{display:flex;flex-direction:column}
 #xw-root .xw-form-buttons .xw-btn{height:44px}
 
-#xw-root .xw-sheet{position:absolute;top:80px;left:0;right:0;bottom:0;z-index:4;display:flex;flex-direction:column;background:var(--xw-bg);transform:translateX(100%);visibility:hidden;transition:transform .32s var(--xw-ease),visibility 0s .32s}
-#xw-root .xw-sheet.is-open{transform:none;visibility:visible;transition:transform .32s var(--xw-ease),visibility 0s}
 #xw-root .xw-sheet-head{display:flex;align-items:center;gap:6px;padding:12px 24px 2px 14px}
 #xw-root .xw-sheet-title{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #xw-root .xw-sheet-sub{padding:0 24px 0 52px;font-size:11.5px;color:var(--xw-faint)}
@@ -234,16 +213,13 @@
 #xw-root .xw-addr-list{flex:1;overflow-y:auto;padding:4px 12px 12px}
 #xw-root .xw-addr-list::-webkit-scrollbar{width:6px}
 #xw-root .xw-addr-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
-#xw-root .xw-addr{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s}
+#xw-root .xw-addr{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s}
 #xw-root .xw-addr:hover{background:var(--xw-hover)}
 #xw-root .xw-addr-icon{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--xw-font-cond);font-size:11px;font-weight:700;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 #xw-root .xw-avatar.is-exodus{background:var(--xw-deep) url("svg/brand/exodus-logomark.svg") center/20px 20px no-repeat;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 #xw-root .xw-avatar.has-image{background:var(--xw-deep)}
 #xw-root .xw-avatar img{display:block;width:100%;height:100%;border-radius:50%;object-fit:cover}
 #xw-root .xw-chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 24px 8px}
-#xw-root .xw-chip{max-width:100%;padding:5px 13px;border-radius:15px;font-size:12px;font-weight:500;color:var(--xw-muted);background:rgba(255,255,255,.04);border:1px solid transparent;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .15s,background .15s}
-#xw-root .xw-chip:hover{color:#fff;background:rgba(255,255,255,.07)}
-#xw-root .xw-chip.is-active{color:#fff;background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,var(--xw-grad-soft) border-box}
 #xw-root .xw-chip:focus-visible{outline:1px solid var(--xw-cyan);outline-offset:1px}
 #xw-root .xw-addr-group{padding:14px 12px 6px}
 #xw-root .xw-addr-group:first-child{padding-top:4px}
@@ -252,51 +228,232 @@
 #xw-root .xw-addr-name{display:flex;align-items:baseline;gap:6px;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden}
 #xw-root .xw-addr-ticker{font-family:var(--xw-font-cond);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--xw-faint)}
 #xw-root .xw-addr-port{margin-left:auto;font-size:11px;font-weight:400;color:var(--xw-faint);overflow:hidden;text-overflow:ellipsis}
-#xw-root .xw-addr-text{margin-top:2px;font-family:Consolas,"Roboto Mono",monospace;font-size:11.5px;color:var(--xw-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#xw-root .xw-addr-text{font-family:Consolas,"Roboto Mono",monospace;font-size:11.5px;color:var(--xw-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #xw-root .xw-addr-copy{flex:none;color:#fff;opacity:.35;transition:opacity .15s,color .15s}
 #xw-root .xw-addr:hover .xw-addr-copy{opacity:1;color:var(--xw-cyan)}
-#xw-root .xw-addr.is-copied .xw-addr-copy{opacity:1;color:var(--xw-green)}
 #xw-root .xw-sheet-note{flex:none;padding:10px 24px 18px;font-size:11px;color:var(--xw-faint)}
 #xw-root .xw-sheet-bar{flex:none;padding:10px 24px 16px}
 #xw-root .xw-sheet-bar .xw-btn{margin:0}
-@keyframes xw-pop{from{opacity:0;transform:scale(.96) translateY(-4px)}to{opacity:1;transform:none}}
-
-@keyframes xw-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
-@keyframes xw-fade{from{opacity:0}to{opacity:1}}
-#xw-root.xw-anim .xw-item{animation:xw-in .4s var(--xw-ease) both;animation-delay:calc(var(--xw-i,0) * 35ms + 90ms)}
-#xw-root.xw-anim .xw-sum{animation:xw-fade .4s ease both;animation-delay:60ms}
 #xw-root form:not(.xw-hide),#xw-root .xw-actions:not(.xw-hide){animation:xw-fade .25s ease both}
-@property --xw-beam{syntax:'<angle>';initial-value:0deg;inherits:false}
-
-/* Dezente Mikro-Animationen */
-@keyframes xw-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-#xw-root .xw-notice.xw-in{animation:xw-rise .28s var(--xw-ease) both}
-#xw-root .xw-sheet.is-anim .xw-addr,#xw-root .xw-sheet.is-anim .xw-addr-group{animation:xw-rise .34s var(--xw-ease) both;animation-delay:calc(min(var(--xw-i,0),12) * 26ms + 70ms)}
-#xw-root .xw-menu-item{animation:xw-rise .2s var(--xw-ease) both;animation-delay:calc(var(--xw-i,0) * 16ms)}
 #xw-root form:not(.xw-hide){animation:xw-rise .26s var(--xw-ease) both}
-#xw-root .xw-chip{transition:color .15s,background .2s,border-color .2s,transform .1s}
 #xw-root .xw-icon{transition:opacity .1s,background .2s,color .2s,transform .1s}
 #xw-root .xw-more{transition:opacity .1s,background .2s,transform .1s}
-#xw-root .xw-chip:active,#xw-root .xw-icon:active,#xw-root .xw-more:active{transform:scale(.93)}
+#xw-root .xw-icon:active,#xw-root .xw-more:active{transform:scale(.93)}
 #xw-root .xw-item .xw-avatar{transition:transform .25s var(--xw-ease)}
 #xw-root .xw-item:hover .xw-avatar{transform:scale(1.05)}
-#xw-root .xw-addr-copy svg{transition:transform .2s var(--xw-ease)}
-#xw-root .xw-addr.is-copied .xw-addr-copy svg{animation:xw-pop .22s var(--xw-ease)}
 
-/* Weniger Bewegung (Systemeinstellung): Gleiten/Skalieren werden zu sanften Überblendungen.
-   Die kurzen Rückmeldungen beim Kopieren (Lichtstrahl, Glühen) bleiben – das sind Farbeffekte. */
+/* Weniger Bewegung (Systemeinstellung). Panel, Sheet, Menü usw. regeln die neuen .xw-reduce-Varianten
+   unten (Klasse per syncReduce); hier bleiben nur die übrigen Druck-/Hover-Transforms. */
 @media (prefers-reduced-motion:reduce){
-  @keyframes xw-in{from{opacity:0}to{opacity:1}}
-  @keyframes xw-rise{from{opacity:0}to{opacity:1}}
-  @keyframes xw-pop{from{opacity:0}to{opacity:1}}
-  #xw-panel,#xw-root .xw-sheet{transform:none!important}
-  #xw-panel{opacity:0;transition:opacity .2s,visibility 0s .2s!important}
-  #xw-root.xw-open #xw-panel{opacity:1;transition:opacity .2s,visibility 0s!important}
-  #xw-root .xw-sheet{opacity:0;transition:opacity .2s,visibility 0s .2s!important}
-  #xw-root .xw-sheet.is-open{opacity:1;transition:opacity .2s,visibility 0s!important}
-  #xw-root .xw-btn:active,#xw-root .xw-chip:active,#xw-root .xw-icon:active,#xw-root .xw-more:active,#xw-toggle:active,
+  #xw-root .xw-icon:active,#xw-root .xw-more:active,#xw-toggle:active,
   #xw-root .xw-item:hover .xw-avatar,#xw-root .xw-fast{transform:none!important}
 }
+
+/* Exodus Multi Wallet – Motion (production). Variante 1A gewählt. Aus design_handoff_sidebar_motion/
+   xw-motion.prod.css übernommen; Reihenfolge beibehalten, Panel-Selektoren auf preload.js umgeschrieben. */
+
+/* ===== @xw:tokens ===== */
+/* Motion-Tokens – einmal in #xw-root ergänzen */
+#xw-root{
+  --xw-ease-out:cubic-bezier(.22,1,.36,1);     /* Standard: schnell rein, weich aus (= --xw-ease) */
+  --xw-ease-in:cubic-bezier(.4,0,1,1);         /* Ausblenden / Schließen */
+  --xw-ease-io:cubic-bezier(.65,0,.35,1);      /* Wege mit Start und Ziel (Sweep, Schweif) */
+  --xw-ease-back:cubic-bezier(.34,1.56,.64,1); /* kleiner Überschwinger (Häkchen, Punkt) */
+  --xw-d-fast:150ms;--xw-d-mid:220ms;--xw-d-slow:320ms;
+  --xw-hold:1800ms;                            /* Copied-Zustand ab Klick */
+}
+/* Gemeinsame Button-Mechanik: Pressed federt zurück */
+#xw-root .xw-btn{transition:color .2s,background .2s,border-color .2s,transform 240ms var(--xw-ease-back)}
+#xw-root .xw-btn:is(:active,.is-pressed){transform:scale(.98);transition-duration:.2s,.2s,.2s,90ms;transition-timing-function:ease,ease,ease,var(--xw-ease-out)}
+#xw-root .xw-cp{isolation:isolate}
+#xw-root .xw-cp-stack{display:grid;align-items:center;justify-items:center}
+#xw-root .xw-cp-a,#xw-root .xw-cp-b{grid-area:1/1;display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
+#xw-root .xw-cp .xw-cp-b svg{color:var(--xw-green)}
+/* Ring-Ebene (1,5px, per Maske auf den Rand beschränkt) */
+#xw-root .xw-cp-fx{position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+#xw-root .xw-cp-ring{position:absolute;inset:0;border-radius:inherit;background:linear-gradient(-90deg,rgba(58,210,159,.95),rgba(58,210,159,.6));opacity:0;transition:opacity 300ms var(--xw-ease-out)}
+#xw-root .xw-cp.is-copied .xw-cp-ring{opacity:1}
+
+/* ===== @xw:trail ===== */
+/* Variante A – Lichtschweif (gewählt) */
+#xw-root .xw-cp--trail .xw-cp-a,#xw-root .xw-cp--trail .xw-cp-b{transition:opacity 220ms var(--xw-ease-out),transform 320ms var(--xw-ease-out)}
+#xw-root .xw-cp--trail .xw-cp-b{opacity:0;transform:translateY(9px)}
+#xw-root .xw-cp--trail.is-copied .xw-cp-a{opacity:0;transform:translateY(-9px)}
+#xw-root .xw-cp--trail.is-copied .xw-cp-b{opacity:1;transform:none}
+#xw-root .xw-cp--trail.is-copied .xw-cp-b svg{animation:xw-check-pop 360ms var(--xw-ease-back) 80ms both}
+#xw-root .xw-cp--trail.is-copied .xw-cp-ring{transition-delay:560ms}
+#xw-root .xw-cp-halo{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;filter:blur(7px);opacity:.55}
+#xw-root .xw-cp-comet{position:absolute;left:0;top:0;width:110px;height:8px;border-radius:4px;background:linear-gradient(90deg,transparent,rgba(58,210,159,.45) 55%,#9dffd6 88%,#fff);offset-path:inset(0 round 30px);offset-rotate:auto;offset-anchor:100% 50%;offset-distance:0%;opacity:0}
+#xw-root .xw-cp--trail.is-copied .xw-cp-comet{animation:xw-trail 900ms var(--xw-ease-io) both}
+@keyframes xw-trail{0%{offset-distance:0%;opacity:0}12%{opacity:1}78%{opacity:1}100%{offset-distance:100%;opacity:0}}
+@keyframes xw-check-pop{from{transform:scale(.5);opacity:0}to{transform:none;opacity:1}}
+#xw-root.xw-reduce .xw-cp--trail .xw-cp-comet{animation:none!important;opacity:0}
+#xw-root.xw-reduce .xw-cp--trail .xw-cp-a,#xw-root.xw-reduce .xw-cp--trail .xw-cp-b{transform:none!important}
+#xw-root.xw-reduce .xw-cp--trail.is-copied .xw-cp-b svg{animation:xw-fade 200ms ease both}
+#xw-root.xw-reduce .xw-cp--trail.is-copied .xw-cp-ring{transition-delay:0ms}
+
+/* ===== @xw:morph ===== */
+/* Icon→Häkchen-Morph (hier für die Adresszeile genutzt) */
+#xw-root .xw-morph{flex:none;overflow:visible}
+#xw-root .xw-morph>*{transform-box:fill-box;transform-origin:center}
+#xw-root .xw-m-front,#xw-root .xw-m-back{transition:opacity 180ms var(--xw-ease-out) 120ms,transform 280ms var(--xw-ease-out) 120ms}
+#xw-root .xw-m-check{stroke:var(--xw-green);stroke-dasharray:1;stroke-dashoffset:1;opacity:0;transition:stroke-dashoffset 160ms var(--xw-ease-in),opacity 100ms linear 80ms}
+#xw-root .is-copied .xw-m-back{opacity:0;transform:translate(3px,3px);transition:opacity 140ms var(--xw-ease-in),transform 200ms var(--xw-ease-in)}
+#xw-root .is-copied .xw-m-front{opacity:0;transform:translate(-2.5px,-2.5px) scale(.5);transition:opacity 160ms var(--xw-ease-in) 40ms,transform 220ms var(--xw-ease-in)}
+#xw-root .is-copied .xw-m-check{stroke-dashoffset:0;opacity:1;transition:stroke-dashoffset 300ms var(--xw-ease-out) 150ms,opacity 60ms linear 150ms}
+#xw-root .xw-cp--morph .xw-cp-a,#xw-root .xw-cp--morph .xw-cp-b{transition:opacity 240ms var(--xw-ease-out),filter 240ms var(--xw-ease-out)}
+#xw-root .xw-cp--morph .xw-cp-b{opacity:0;filter:blur(3px)}
+#xw-root .xw-cp--morph.is-copied .xw-cp-a{opacity:0;filter:blur(3px)}
+#xw-root .xw-cp--morph.is-copied .xw-cp-b{opacity:1;filter:none;transition-delay:60ms}
+#xw-root .xw-cp--morph .xw-cp-ring{transition:opacity 280ms var(--xw-ease-out)}
+#xw-root.xw-reduce .xw-m-front,#xw-root.xw-reduce .xw-m-back{transform:none!important}
+#xw-root.xw-reduce .xw-m-check{stroke-dashoffset:0!important}
+#xw-root.xw-reduce .xw-cp--morph .xw-cp-a,#xw-root.xw-reduce .xw-cp--morph .xw-cp-b{filter:none!important}
+
+/* ===== @xw:row ===== */
+/* Adresszeile: Tönung, Adresse → „Address copied“, Icon-Morph */
+#xw-root .xw-addr--cp:before{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(58,210,159,.07);box-shadow:inset 0 0 0 1px rgba(58,210,159,.14);opacity:0;pointer-events:none;transition:opacity 450ms var(--xw-ease-out)}
+#xw-root .xw-addr--cp.is-copied:before{opacity:1;transition-duration:150ms}
+#xw-root .xw-addr-sub{display:grid;margin-top:2px;overflow:hidden}
+#xw-root .xw-addr-sub>*{grid-area:1/1;min-width:0}
+#xw-root .xw-addr--cp .xw-addr-text{margin-top:0;transition:opacity 200ms var(--xw-ease-out),transform 260ms var(--xw-ease-out)}
+#xw-root .xw-addr-ok{font-size:11.5px;line-height:1.35;font-weight:500;color:var(--xw-green);opacity:0;transform:translateY(8px);transition:opacity 200ms var(--xw-ease-out),transform 260ms var(--xw-ease-out)}
+#xw-root .xw-addr--cp.is-copied .xw-addr-text{opacity:0;transform:translateY(-8px)}
+#xw-root .xw-addr--cp.is-copied .xw-addr-ok{opacity:1;transform:none;transition-delay:40ms}
+#xw-root .xw-addr--cp.is-copied .xw-addr-copy{opacity:1;color:var(--xw-green)}
+#xw-root .xw-addr--cp:active .xw-addr-copy{transform:scale(.9)}
+#xw-root .xw-addr-copy{transition:opacity .15s,color .15s,transform 200ms var(--xw-ease-back)}
+#xw-root.xw-reduce .xw-addr--cp .xw-addr-text,#xw-root.xw-reduce .xw-addr-ok{transform:none!important}
+
+/* ===== @xw:menu ===== */
+/* ⋯-Menü: .is-open schaltet. Items bekommen style="--xw-i:0..n" */
+#xw-root .xw-menu{position:absolute;z-index:6;top:40px;right:8px;width:250px;padding:6px;border-radius:10px;background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 40px rgba(0,0,0,.55);transform-origin:top right;opacity:0;visibility:hidden;transform:scale(.97) translateY(-4px);pointer-events:none;transition:opacity 120ms var(--xw-ease-in),transform 120ms var(--xw-ease-in),visibility 0s 120ms}
+#xw-root .xw-menu.is-open{opacity:1;visibility:visible;transform:none;pointer-events:auto;transition:opacity 160ms var(--xw-ease-out),transform 200ms var(--xw-ease-out),visibility 0s}
+#xw-root .xw-menu-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border-radius:6px;font-size:13px;text-align:left;color:rgba(255,255,255,.82);cursor:pointer;opacity:0;transform:translateY(-3px);transition:background .12s,color .12s,opacity 100ms,transform 100ms}
+#xw-root .xw-menu.is-open .xw-menu-item{opacity:1;transform:none;transition:background .12s,color .12s,opacity 160ms var(--xw-ease-out),transform 200ms var(--xw-ease-out);transition-delay:0s,0s,calc(min(var(--xw-i,0),8) * 14ms + 30ms),calc(min(var(--xw-i,0),8) * 14ms + 30ms)}
+#xw-root .xw-menu-item svg{opacity:.55;transition:opacity .12s,color .12s}
+#xw-root .xw-menu-item:hover{background:var(--xw-hover);color:#fff}
+#xw-root .xw-menu-item:hover svg{opacity:1;color:var(--xw-cyan)}
+#xw-root .xw-menu-item.is-danger:hover,#xw-root .xw-menu-item.is-danger:hover svg{color:var(--xw-red)}
+#xw-root .xw-menu-sep{height:1px;margin:5px 6px;background:rgba(255,255,255,.07)}
+#xw-root .xw-more svg{transition:transform 200ms var(--xw-ease-out)}
+#xw-root .xw-more.is-active svg{transform:rotate(90deg)}
+#xw-root.xw-reduce .xw-menu,#xw-root.xw-reduce .xw-menu-item,#xw-root.xw-reduce .xw-more svg{transform:none!important;transition-delay:0s!important}
+
+/* ===== @xw:sheet ===== */
+/* Ansicht von rechts: .xw-view (Hauptliste) + .xw-sheet; Klasse .is-sheet auf dem Panel */
+#xw-root .xw-view{flex:1;display:flex;flex-direction:column;min-height:0;transition:transform 260ms var(--xw-ease-io),opacity 260ms var(--xw-ease-io)}
+#xw-root .is-sheet>.xw-view{transform:translateX(-28px);opacity:.4;transition:transform 320ms var(--xw-ease-out),opacity 320ms var(--xw-ease-out)}
+#xw-root .xw-sheet{position:absolute;top:80px;left:0;right:0;bottom:0;z-index:4;display:flex;flex-direction:column;background:var(--xw-bg);box-shadow:-18px 0 40px rgba(0,0,0,0);transform:translateX(100%);visibility:hidden;transition:transform 260ms var(--xw-ease-io),box-shadow 260ms,visibility 0s 260ms}
+#xw-root .is-sheet>.xw-sheet{transform:none;visibility:visible;box-shadow:-18px 0 40px rgba(0,0,0,.35);transition:transform 320ms var(--xw-ease-out),box-shadow 320ms,visibility 0s}
+#xw-root .is-sheet>.xw-sheet .xw-addr,#xw-root .is-sheet>.xw-sheet .xw-addr-group{animation:xw-rise 260ms var(--xw-ease-out) both;animation-delay:calc(min(var(--xw-i,0),10) * 28ms + 140ms)}
+@keyframes xw-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#xw-root.xw-reduce .xw-view,#xw-root.xw-reduce .xw-sheet{transform:none!important}
+#xw-root.xw-reduce .xw-sheet{opacity:0;transition:opacity 200ms ease,visibility 0s 200ms}
+#xw-root.xw-reduce .is-sheet>.xw-sheet{opacity:1;transition:opacity 200ms ease,visibility 0s}
+#xw-root.xw-reduce .is-sheet>.xw-sheet .xw-addr,#xw-root.xw-reduce .is-sheet>.xw-sheet .xw-addr-group{animation-name:xw-fade}
+
+/* ===== @xw:stagger ===== */
+/* Gestaffeltes Einblenden. Zeilen bekommen style="--xw-i:n"; Klasse .xw-anim auf dem Container neu setzen */
+#xw-root .xw-anim>.xw-item,#xw-root .xw-anim>.xw-stag{animation:xw-in 280ms var(--xw-ease-out) both;animation-delay:calc(min(var(--xw-i,0),10) * 30ms + 90ms)}
+@keyframes xw-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes xw-fade{from{opacity:0}to{opacity:1}}
+#xw-root.xw-reduce .xw-anim>.xw-item,#xw-root.xw-reduce .xw-anim>.xw-stag{animation-name:xw-fade;animation-delay:0ms}
+
+/* ===== @xw:toast ===== */
+/* Hinweis-Toast: absolut im Panel, .is-show schaltet; .is-ok / .is-error wie früher .xw-notice */
+#xw-root .xw-toast{position:absolute;left:24px;right:24px;bottom:84px;z-index:8;display:flex;align-items:center;gap:10px;padding:11px 14px 11px 16px;border-radius:8px;font-size:12.5px;color:var(--xw-text);background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 32px rgba(0,0,0,.5);overflow:hidden;opacity:0;visibility:hidden;transform:translateY(10px) scale(.98);pointer-events:none;transition:opacity 160ms var(--xw-ease-in),transform 160ms var(--xw-ease-in),visibility 0s 160ms}
+#xw-root .xw-toast:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--xw-grad)}
+#xw-root .xw-toast.is-ok:before{background:var(--xw-green)}
+#xw-root .xw-toast.is-error:before{background:var(--xw-red)}
+#xw-root .xw-toast.is-ok svg{color:var(--xw-green)}
+#xw-root .xw-toast.is-error svg{color:var(--xw-red)}
+#xw-root .xw-toast:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:rgba(255,255,255,.18);transform-origin:left;transform:scaleX(0)}
+#xw-root .xw-toast.is-show{opacity:1;visibility:visible;transform:none;pointer-events:auto;transition:opacity 200ms var(--xw-ease-out),transform 240ms var(--xw-ease-out),visibility 0s}
+#xw-root .xw-toast.is-show:after{animation:xw-toast-time var(--xw-toast,2400ms) linear both}
+@keyframes xw-toast-time{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+#xw-root.xw-reduce .xw-toast{transform:none!important}
+#xw-root.xw-reduce .xw-toast:after{display:none}
+
+/* ===== @xw:chip ===== */
+/* Chip an/aus (Mehrfachauswahl) – Verlaufsrand als Pseudo-Ebene, damit er überblenden kann */
+#xw-root .xw-chip{position:relative;max-width:100%;padding:5px 13px;border-radius:15px;font-size:12px;font-weight:500;color:var(--xw-muted);background:rgba(255,255,255,.04);border:1px solid transparent;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 150ms,background 150ms,transform 220ms var(--xw-ease-back)}
+#xw-root .xw-chip:before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--xw-grad-soft);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity 150ms var(--xw-ease-in)}
+#xw-root .xw-chip:hover{color:#fff;background:rgba(255,255,255,.07)}
+#xw-root .xw-chip:active{transform:scale(.96);transition-duration:150ms,150ms,90ms}
+#xw-root .xw-chip.is-active{color:#fff;background:var(--xw-bg)}
+#xw-root .xw-chip.is-active:before{opacity:1;transition:opacity 200ms var(--xw-ease-out)}
+#xw-root .xw-chip.is-on{animation:xw-chip-on 260ms var(--xw-ease-back)}
+@keyframes xw-chip-on{from{transform:scale(.94)}to{transform:none}}
+#xw-root.xw-reduce .xw-chip,#xw-root.xw-reduce .xw-chip.is-on{transform:none!important;animation:none!important}
+
+/* ===== @xw:panel ===== */
+/* Panel öffnen. Mapping Prototyp → preload.js: .xw-open → #xw-root.xw-open, .xw-slide → #xw-panel,
+   .xw-backdrop → #xw-backdrop, .xw-toggle → #xw-toggle. Die !important-Abschirmung von preload.js bleibt. */
+#xw-backdrop{opacity:0;pointer-events:none;transition:opacity 220ms var(--xw-ease-in)!important}
+#xw-root.xw-open #xw-backdrop{opacity:1;pointer-events:auto;transition:opacity 300ms var(--xw-ease-out)!important}
+#xw-panel{transform:translateX(-100%);visibility:hidden;transition:transform 220ms var(--xw-ease-in),box-shadow 220ms,visibility 0s 220ms!important}
+#xw-root.xw-open #xw-panel{transform:none;visibility:visible;box-shadow:24px 0 64px rgba(0,0,0,.5);transition:transform 340ms var(--xw-ease-out),box-shadow 340ms,visibility 0s!important}
+#xw-panel .xw-stag{opacity:0;transform:translateX(-10px);transition:opacity 120ms,transform 120ms}
+#xw-root.xw-open #xw-panel .xw-stag{opacity:1;transform:none;transition:opacity 280ms var(--xw-ease-out),transform 280ms var(--xw-ease-out);transition-delay:calc(min(var(--xw-i,0),10) * 30ms + 120ms)}
+#xw-toggle{transition:opacity .15s,background .2s,transform 240ms var(--xw-ease-back)!important}
+#xw-toggle:hover{background:rgba(255,255,255,.06)!important}
+#xw-toggle:active{transform:scale(.92);transition-duration:.15s,.2s,90ms!important}
+#xw-root.xw-reduce #xw-panel,#xw-root.xw-reduce #xw-panel .xw-stag{transform:none!important}
+#xw-root.xw-reduce #xw-panel{opacity:0;transition:opacity 200ms ease,visibility 0s 200ms!important}
+#xw-root.xw-reduce.xw-open #xw-panel{opacity:1;transition:opacity 200ms ease,visibility 0s!important}
+
+/* ===== @xw:roll ===== */
+/* Saldo-Update: alter Wert rollt raus, neuer rein; kurze Tönung nach oben/unten. Container .xw-roll */
+#xw-root .xw-roll{display:inline-grid;overflow:hidden;vertical-align:bottom}
+#xw-root .xw-roll>span{grid-area:1/1;white-space:nowrap}
+#xw-root .xw-roll-out{animation:xw-roll-out 220ms var(--xw-ease-in) both}
+#xw-root .xw-roll-in{animation:xw-roll-in 320ms var(--xw-ease-out) 60ms both}
+#xw-root .xw-roll-in.is-up{animation:xw-roll-in 320ms var(--xw-ease-out) 60ms both,xw-tint-up 1200ms ease-out 60ms both}
+#xw-root .xw-roll-in.is-down{animation:xw-roll-in 320ms var(--xw-ease-out) 60ms both,xw-tint-down 1200ms ease-out 60ms both}
+@keyframes xw-roll-out{to{opacity:0;transform:translateY(-45%)}}
+@keyframes xw-roll-in{from{opacity:0;transform:translateY(45%);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+@keyframes xw-tint-up{from{color:var(--xw-green)}to{color:var(--xw-text)}}
+@keyframes xw-tint-down{from{color:var(--xw-red)}to{color:var(--xw-text)}}
+#xw-root.xw-reduce .xw-roll-out{animation:xw-fade-out 160ms ease both}
+#xw-root.xw-reduce .xw-roll-in{animation-name:xw-fade!important}
+#xw-root.xw-reduce .xw-roll-in.is-up{animation:xw-fade 200ms ease both,xw-tint-up 1200ms ease-out both!important}
+#xw-root.xw-reduce .xw-roll-in.is-down{animation:xw-fade 200ms ease both,xw-tint-down 1200ms ease-out both!important}
+@keyframes xw-fade-out{to{opacity:0}}
+
+/* ===== @xw:switch ===== */
+/* Wallet-Wechsel: Markierungsbalken, Status-Punkt springt mit einem Puls ein */
+#xw-root .xw-item:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;border-radius:2px;background:linear-gradient(180deg,var(--xw-cyan),var(--xw-violet));opacity:0;transform:scaleY(.2);transition:opacity 150ms var(--xw-ease-in),transform 150ms var(--xw-ease-in)}
+#xw-root .xw-item.is-current:before{opacity:1;transform:none;transition:opacity 200ms var(--xw-ease-out),transform 260ms var(--xw-ease-out)}
+#xw-root .xw-item.is-live .xw-avatar:after{animation:xw-dot 320ms var(--xw-ease-back) both}
+#xw-root .xw-avatar:before{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:var(--xw-green);opacity:0;pointer-events:none}
+#xw-root .xw-item.is-current .xw-avatar:before{background:var(--xw-cyan)}
+#xw-root .xw-item.is-live .xw-avatar:before{animation:xw-dot-pulse 700ms var(--xw-ease-out) 120ms both}
+#xw-root .xw-item.is-live .xw-badge{animation:xw-fade 200ms var(--xw-ease-out) both}
+@keyframes xw-dot{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}
+@keyframes xw-dot-pulse{from{transform:scale(1);opacity:.5}to{transform:scale(2.6);opacity:0}}
+#xw-root.xw-reduce .xw-item:before{transform:none!important}
+#xw-root.xw-reduce .xw-item.is-live .xw-avatar:after{animation-name:xw-fade}
+#xw-root.xw-reduce .xw-item.is-live .xw-avatar:before{animation:none}
+
+/* ===== @xw:delete ===== */
+/* Löschen bestätigen: Name tippen → Button „scharf“; falsche Eingabe → kurzes Schütteln + roter Rand */
+#xw-root .xw-btn.is-danger[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+#xw-root .xw-btn.is-danger{transition:opacity 200ms var(--xw-ease-out),transform 240ms var(--xw-ease-back)}
+#xw-root .xw-btn.is-danger:before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:linear-gradient(-90deg,#ff4d6a,#ff8181);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity 200ms var(--xw-ease-out)}
+#xw-root .xw-btn.is-danger:not([aria-disabled="true"]):before{opacity:1}
+#xw-root .xw-btn.is-danger.is-armed{animation:xw-arm 260ms var(--xw-ease-back)}
+@keyframes xw-arm{from{transform:scale(.97)}to{transform:none}}
+#xw-root .xw-input.is-error{border-color:rgba(255,129,129,.7);box-shadow:0 0 0 3px rgba(255,129,129,.12)}
+#xw-root .xw-shake{animation:xw-shake 320ms cubic-bezier(.36,.07,.19,.97) both}
+@keyframes xw-shake{15%{transform:translateX(-4px)}35%{transform:translateX(4px)}55%{transform:translateX(-2.5px)}75%{transform:translateX(1.5px)}100%{transform:none}}
+#xw-root.xw-reduce .xw-shake,#xw-root.xw-reduce .xw-btn.is-danger.is-armed{animation:none}
+
+/* ----- Ergänzungen für preload.js (nicht Teil des Handoffs) ----- */
+/* Symbol im Toast wechselt je nach Art (ok/Fehler/neutral) */
+#xw-root .xw-toast-ico{display:flex;flex:none}
+/* Formular-Einblendung ohne Versatz bei weniger Bewegung */
+#xw-root.xw-reduce form:not(.xw-hide){animation-name:xw-fade}
 `
 
   // -------------------------------------------------------------------------------------------
@@ -408,6 +565,7 @@
       fastSwitchTitle: 'Switch to this wallet (closes this window)',
       addrAll: 'All portfolios',
       addrCopiedFrom: (ticker, portfolio) => `${ticker} address from “${portfolio}” copied.`,
+      addrOk: 'Address copied',
       addrPortfolios: 'Portfolios',
       back: 'Back',
       mAvatar: 'Change picture …',
@@ -528,6 +686,7 @@
       fastSwitchTitle: 'Zu dieser Wallet wechseln (schließt dieses Fenster)',
       addrAll: 'Alle Portfolios',
       addrCopiedFrom: (ticker, portfolio) => `${ticker}-Adresse aus „${portfolio}“ kopiert.`,
+      addrOk: 'Adresse kopiert',
       addrPortfolios: 'Portfolios',
       back: 'Zurück',
       mAvatar: 'Bild ändern …',
@@ -577,6 +736,51 @@
     return node
   }
 
+  // Motion-Helfer aus design_handoff_sidebar_motion/xw-motion.js – nur Klassen setzen/entfernen.
+  // Im Scope dieses Skripts statt als window.XW (isolierte Welt, nichts nach außen geben).
+  const reduceQuery = matchMedia('(prefers-reduced-motion: reduce)')
+  const XW = {
+    // Reduced-Motion auf #xw-root spiegeln
+    syncReduce (root) {
+      const set = () => root.classList.toggle('xw-reduce', reduceQuery.matches)
+      set(); reduceQuery.addEventListener('change', set)
+    },
+    // Kopier-Bestätigung (Button + Zeile): .is-copied setzen, nach hold entfernen. Erneuter Klick verlängert nur.
+    confirm (el, hold = 1800) {
+      clearTimeout(el._xwT)
+      if (!el.classList.contains('is-copied')) el.classList.add('is-copied')
+      el._xwT = setTimeout(() => el.classList.remove('is-copied'), hold)
+    },
+    // Keyframe-Animation neu starten
+    replay (el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls) },
+    // Einmal-Klasse, entfernt sich nach animationend selbst
+    once (el, cls) {
+      XW.replay(el, cls)
+      el.addEventListener('animationend', function h (e) { if (e.target === el) { el.classList.remove(cls); el.removeEventListener('animationend', h) } })
+    },
+    // kind: 'ok' | 'error' | '' (neutral, Verlaufsbalken). Leeres kind setzt keine is-*-Klasse.
+    toast (el, text, kind = 'ok', hold = 2400) {
+      clearTimeout(el._xwT)
+      el.querySelector('.xw-toast-text').textContent = text
+      el.classList.remove('is-ok', 'is-error'); if (kind) el.classList.add('is-' + kind)
+      el.style.setProperty('--xw-toast', hold + 'ms')
+      XW.replay(el, 'is-show')
+      el._xwT = setTimeout(() => el.classList.remove('is-show'), hold)
+    },
+    // Saldo rollen: host = .xw-roll, dir = 'up' | 'down' | ''
+    roll (host, text, dir) {
+      const old = host.querySelector('.xw-roll-cur')
+      const n = document.createElement('span')
+      n.className = 'xw-roll-cur xw-roll-in' + (dir ? ' is-' + dir : '')
+      n.textContent = text
+      host.appendChild(n)
+      if (old) {
+        old.className = 'xw-roll-out'
+        old.addEventListener('animationend', () => old.remove(), { once: true })
+      }
+    },
+  }
+
   // Währung kommt pro Wallet aus deren Exodus-Einstellung (USD, EUR, …), das Zahlenformat aus der Sprache
   function money (value, currency) {
     if (typeof value !== 'number' || !isFinite(value)) return '–'
@@ -615,8 +819,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
 
     let state = null
     let open = false
-    let noticeTimer = null
     let refreshTimer = null
+    // Vorherige Werte je Wallet: für Saldo-Roll (nur bei Änderung) und is-live (nur bei Statuswechsel)
+    const prevValues = new Map()
+    const prevStatus = new Map()
 
     // Feste Beschriftungen: [Element, Textschlüssel, Attribut oder null für den Text]. applyTexts()
     // setzt sie neu, sobald main.js eine andere Exodus-Sprache meldet.
@@ -641,9 +847,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     label(toggle, 'toggleAria', 'aria-label')
 
     const eyeBtn = el('button', { type: 'button', class: 'xw-icon', onclick: toggleHide })
-    const sumBox = el('div', { class: 'xw-sum xw-hide' })
+    // Summe staffelt beim Öffnen als zweites Element ein (Kopf 0, Summe 1, Wallet-Zeilen ab 2)
+    const sumBox = el('div', { class: 'xw-sum xw-stag xw-hide', style: '--xw-i:1' })
     const list = el('div', { class: 'xw-list', role: 'list' })
-    const notice = el('div', { class: 'xw-notice xw-hide', role: 'status' })
+    // Hinweis-Toast (ersetzt das frühere .xw-notice im Fußbereich – schwebt, verschiebt nichts)
+    const toastIco = el('span', { class: 'xw-toast-ico', html: ICON.check(16) })
+    const toastEl = el('div', { class: 'xw-toast', role: 'status', 'aria-live': 'polite' }, toastIco, el('span', { class: 'xw-toast-text' }))
     const oldBox = el('div')
     const actions = el('div', { class: 'xw-actions' },
       el('button', { type: 'button', class: 'xw-btn is-primary', onclick: startCreate, html: ICON.plus(18) }, label(el('span'), 'create')),
@@ -670,7 +879,21 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     const addrChips = el('div', { class: 'xw-chips xw-hide', role: 'tablist' })
     label(addrChips, 'addrPortfolios', 'aria-label')
     const exportHint = label(el('div', { class: 'xw-sheet-sub xw-hide' }), 'exportHint')
-    const exportBtn = el('button', { type: 'button', class: 'xw-btn is-primary', onclick: () => doExport() })
+    // Kopier-Knopf Variante 1A „Lichtschweif“: beide Beschriftungen liegen im selben Grid-Feld, die Breite
+    // richtet sich nach der längeren – beim Wechsel springt nichts.
+    const exportLabelA = el('span')
+    const exportLabelB = el('span')
+    const exportBtn = el('button', { type: 'button', class: 'xw-btn is-primary xw-cp xw-cp--trail', onclick: () => doExport() },
+      el('span', { class: 'xw-cp-fx', 'aria-hidden': 'true' }, el('i', { class: 'xw-cp-ring' }), el('i', { class: 'xw-cp-comet' })),
+      el('span', { class: 'xw-cp-halo', 'aria-hidden': 'true' }, el('i', { class: 'xw-cp-comet' })),
+      el('span', { class: 'xw-cp-stack' },
+        el('span', { class: 'xw-cp-a', html: ICON.copy(16) }, exportLabelA),
+        el('span', { class: 'xw-cp-b', html: ICON.check(16) }, exportLabelB)))
+    // Während „Copied“ bleibt die Zahl im zweiten Label stehen, auch wenn sich die Auswahl ändert
+    function setExportLabels (n) {
+      exportLabelA.textContent = T.exportBtn(n)
+      if (!exportBtn.classList.contains('is-copied')) exportLabelB.textContent = T.exportBtnDone(n)
+    }
     const exportBar = el('div', { class: 'xw-sheet-bar xw-hide' }, exportBtn)
     const sheetNote = label(el('div', { class: 'xw-sheet-note' }), 'addrNote')
     const sheet = el('div', { class: 'xw-sheet', 'aria-hidden': 'true' },
@@ -689,21 +912,26 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let sheetCross = false
     let sheetSelected = new Set()
 
+    // Hauptansicht in .xw-view: weicht nach links, wenn die Adress-Ansicht (.xw-sheet) hereingleitet.
+    // Beide sind direkte Kinder des Panels; umgeschaltet wird mit .is-sheet am Panel.
+    const view = el('div', { class: 'xw-view' },
+      sumBox,
+      label(el('div', { class: 'xw-intro' }), 'intro'),
+      el('div', { class: 'xw-section' }, label(el('div', { class: 'xw-label' }), 'yourWallets')),
+      list,
+      el('div', { class: 'xw-bottom' }, actions, form),
+      label(el('div', { class: 'xw-foot' }), 'foot'))
     const panel = el('aside', { id: 'xw-panel', tabindex: '-1', 'aria-label': 'Wallets' },
-      el('div', { class: 'xw-head' },
+      el('div', { class: 'xw-head xw-stag', style: '--xw-i:0' },
         el('div', { class: 'xw-head-text' },
           el('div', { class: 'xw-kicker', text: 'Exodus' }),
           el('div', { class: 'xw-title', text: 'Wallets' })),
         label(el('button', { type: 'button', class: 'xw-icon', html: ICON.list(18), onclick: () => openCrossExport() }), 'exportGlobalTitle', 'title'),
         eyeBtn,
         label(el('button', { type: 'button', class: 'xw-icon', html: ICON.close(18), onclick: () => closePanel() }), 'close', 'title')),
-      sumBox,
-      label(el('div', { class: 'xw-intro' }), 'intro'),
-      el('div', { class: 'xw-section' }, label(el('div', { class: 'xw-label' }), 'yourWallets')),
-      list,
-      el('div', { class: 'xw-bottom' }, notice, actions, form),
-      label(el('div', { class: 'xw-foot' }), 'foot'),
-      sheet)
+      view,
+      sheet,
+      toastEl)
 
     // Exodus-Tastenkürzel nicht auslösen, während in der Seitenleiste getippt wird
     for (const type of ['keydown', 'keyup', 'keypress']) panel.addEventListener(type, (e) => e.stopPropagation())
@@ -712,13 +940,14 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       e.preventDefault()
       e.stopPropagation()
       if (menu) closeMenu()
-      else if (sheet.classList.contains('is-open')) closeSheet()
+      else if (panel.classList.contains('is-sheet')) closeSheet()
       else if (!form.classList.contains('xw-hide')) hideForm()
       else closePanel()
     }, true)
 
     const root = el('div', { id: 'xw-root' }, toggle, el('div', { id: 'xw-backdrop', onclick: () => closePanel() }), panel)
     document.body.appendChild(root)
+    XW.syncReduce(root) // „weniger Bewegung“ als Klasse .xw-reduce spiegeln
     applyTexts()
 
     // Knopf vor dem Exodus-Logo platzieren (Header-Höhe/-Sichtbarkeit ändert sich je nach Ansicht)
@@ -761,12 +990,18 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     syncTheme()
     setInterval(syncTheme, 2000)
 
-    let animTimer = null
+    // Wallet-Zeilen gestaffelt einblenden (@xw:stagger). .xw-anim bleibt nur kurz am Container: Zeilen, die in
+    // dieser Zeit eingefügt werden (erstes Laden nach dem Öffnen), laufen mit; das 15-s-Neuzeichnen nicht.
+    let listAnimTimer = null
+    function animateList () {
+      XW.replay(list, 'xw-anim')
+      clearTimeout(listAnimTimer)
+      listAnimTimer = setTimeout(() => list.classList.remove('xw-anim'), 1100)
+    }
+
     function openPanel () {
       open = true
-      clearTimeout(animTimer)
-      root.classList.add('xw-anim')
-      animTimer = setTimeout(() => root.classList.remove('xw-anim'), 1200)
+      animateList()
       syncTheme()
       root.classList.add('xw-open')
       toggle.setAttribute('aria-expanded', 'true')
@@ -796,13 +1031,15 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
     }
 
+    // Hinweise als Toast. Kurze Bestätigungen stehen 2,4 s (Handoff-Standard); längere Texte und Fehler
+    // bleiben länger, damit man sie lesen kann. Die Restzeit-Linie läuft über genau diese Dauer.
     function showNotice (text, kind) {
-      notice.textContent = text
-      notice.className = 'xw-notice' + (kind ? ' is-' + kind : '')
-      void notice.offsetWidth // Einblend-Animation auch bei direkt folgendem Hinweis neu starten
-      notice.classList.add('xw-in')
-      clearTimeout(noticeTimer)
-      noticeTimer = setTimeout(() => notice.classList.add('xw-hide'), kind === 'error' ? 12000 : 9000)
+      const len = String(text).length
+      const hold = kind === 'error'
+        ? Math.min(10000, Math.max(4000, 1500 + len * 50))
+        : Math.min(8000, Math.max(2400, 1100 + len * 38))
+      toastIco.innerHTML = kind === 'error' ? ICON.alert(16) : kind === 'ok' ? ICON.check(16) : ICON.info(16)
+      XW.toast(toastEl, text, kind || '', hold)
     }
     const fail = (e) => showNotice(e.message, 'error')
 
@@ -828,6 +1065,22 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           el('span', { text: T.importOld(f.name) }))))
     }
 
+    // Saldo in .xw-roll verpacken (@xw:roll). Hat sich der Wert seit dem letzten Zeichnen geändert, rollt der
+    // alte Wert raus und der neue rein – Richtung nach der Zahl. Beim ersten Zeichnen und bei verborgenen
+    // Kontoständen (••••••) steht der Wert einfach da, ohne Animation.
+    function rollHost (key, text, num, rollable) {
+      const host = el('span', { class: 'xw-roll' })
+      const prev = prevValues.get(key)
+      prevValues.set(key, rollable ? { text, num } : null)
+      if (rollable && prev && prev.text !== text) {
+        host.appendChild(el('span', { class: 'xw-roll-cur', text: prev.text }))
+        XW.roll(host, text, num > prev.num ? 'up' : num < prev.num ? 'down' : '')
+      } else {
+        host.appendChild(el('span', { class: 'xw-roll-cur', text }))
+      }
+      return host
+    }
+
     // Summe aller Wallets. Verschiedene Währungen (z. B. eine Wallet in USD, eine in EUR) werden nicht
     // umgerechnet – dafür bräuchte es Wechselkurse aus dem Netz –, sondern als Teilsummen angezeigt.
     function renderSum (hide) {
@@ -849,7 +1102,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         el('div', { class: 'xw-sum-row' },
           el('div', { class: 'xw-label', text: T.sumLabel }),
           el('div', { class: 'xw-sum-count', text: T.walletsCount(state.wallets.length) })),
-        el('div', { class: 'xw-sum-value' + (groups.length > 1 && !hide ? ' is-multi' : ''), text }),
+        // Bei mehreren Währungen rollt der ganze String; die Richtung kommt von der Hauptwährung
+        el('div', { class: 'xw-sum-value' + (groups.length > 1 && !hide ? ' is-multi' : '') }, rollHost('sum', text, groups[0][1], !hide)),
         // replaceChildren() würde null als Text "null" einfügen, daher leeres Array statt null
         ...(missing ? [el('div', { class: 'xw-sum-note', text: T.sumMissing(missing) })] : []))
       sumBox.classList.remove('xw-hide')
@@ -904,10 +1158,15 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         onclick: (e) => { e.stopPropagation(); toggleMenu(w, moreBtn) },
       })
 
+      // Echter Statuswechsel (z. B. andere Wallet wurde gerade geöffnet)? Nicht bei jedem Neuzeichnen.
+      const status = w.isCurrent ? 'current' : w.running ? 'running' : ''
+      const becameLive = prevStatus.has(w.id) && prevStatus.get(w.id) !== status && !!status
+      prevStatus.set(w.id, status)
+
       const name = labelOf(w)
       const item = el('div', {
         class: 'xw-item' + (w.isCurrent ? ' is-current' : w.running ? ' is-running' : ''),
-        style: `--xw-i:${index}`,
+        style: `--xw-i:${index + 2}`, // Kopf 0, Summe 1, Wallet-Zeilen ab 2
         role: 'listitem',
         tabindex: w.isCurrent ? null : '0',
         title: w.isCurrent ? T.itemCurrent : (w.running ? T.itemRunning : T.itemOpen),
@@ -918,7 +1177,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         : el('div', { class: 'xw-avatar is-exodus' }),
       el('div', { class: 'xw-body' },
         el('div', { class: 'xw-name' }, el('span', { class: 'xw-name-text', text: name }), ...badges),
-        el('div', { class: 'xw-bal' + (cache ? '' : ' is-muted'), text: balance }),
+        el('div', { class: 'xw-bal' + (cache ? '' : ' is-muted') }, cache ? rollHost('w:' + w.id, balance, cache.total, !hide) : balance),
         cache ? el('div', { class: 'xw-meta', text: T.updated(ago(cache.updatedAt)) }) : null,
         ports),
       moreBtn)
@@ -945,6 +1204,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if (!w.isCurrent) {
         item.addEventListener('click', (e) => { if (!e.target.closest('.xw-more, .xw-fast')) openWallet(w, false) })
         item.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === item) openWallet(w, false) })
+      }
+      // Status-Punkt springt ein und pulsiert einmal (@xw:switch), danach Klasse wieder weg
+      if (becameLive) {
+        XW.replay(item, 'is-live')
+        setTimeout(() => item.classList.remove('is-live'), 1000)
       }
       return item
     }
@@ -1017,35 +1281,40 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         const left = Math.min(Math.max(8, point.x - pr.left), pr.width - node.offsetWidth - 8)
         const top = Math.min(Math.max(8, point.y - pr.top), pr.height - h - 8)
         node.style.left = Math.round(left) + 'px'
+        node.style.right = 'auto'
         node.style.top = Math.round(top) + 'px'
         node.style.transformOrigin = 'top left'
-        menu = node
-        menuButton = button
-        button.classList.add('is-active')
-        const first = node.querySelector('.xw-menu-item:not(.is-checked)')
-        if (first) first.focus()
-        return
+      } else {
+        const spaceBelow = pr.bottom - br.bottom
+        const spaceAbove = br.top - pr.top
+        const below = spaceBelow >= h + 12 || spaceBelow >= spaceAbove
+        const wanted = below ? br.bottom - pr.top + 4 : br.top - pr.top - h - 4
+        // Nie über den Rand des Panels hinaus – notfalls überdeckt das Menü den eigenen Knopf
+        const top = Math.min(Math.max(8, wanted), pr.height - h - 8)
+        node.style.right = Math.max(8, Math.round(pr.right - br.right)) + 'px'
+        node.style.top = Math.round(top) + 'px'
+        // Klappt es nach oben auf, wächst es aus der unteren Ecke (früher Klasse .is-up)
+        node.style.transformOrigin = below ? 'top right' : 'bottom right'
+        button.setAttribute('aria-expanded', 'true')
       }
-      const spaceBelow = pr.bottom - br.bottom
-      const spaceAbove = br.top - pr.top
-      const below = spaceBelow >= h + 12 || spaceBelow >= spaceAbove
-      const wanted = below ? br.bottom - pr.top + 4 : br.top - pr.top - h - 4
-      // Nie über den Rand des Panels hinaus – notfalls überdeckt das Menü den eigenen Knopf
-      const top = Math.min(Math.max(8, wanted), pr.height - h - 8)
-      node.style.right = Math.max(8, Math.round(pr.right - br.right)) + 'px'
-      node.style.top = Math.round(top) + 'px'
-      node.classList.toggle('is-up', !below)
       menu = node
       menuButton = button
       button.classList.add('is-active')
-      button.setAttribute('aria-expanded', 'true')
-      const first = node.querySelector('.xw-menu-item:not(.is-checked)')
-      if (first) first.focus()
+      // Einen Frame später öffnen, damit die Transition vom geschlossenen Zustand aus läuft
+      requestAnimationFrame(() => {
+        if (menu !== node) return
+        node.classList.add('is-open')
+        const first = node.querySelector('.xw-menu-item:not(.is-checked)')
+        if (first) first.focus()
+      })
     }
 
+    // Schließen: .is-open weg (120 ms ease-in), danach aus dem DOM
     function closeMenu () {
       if (!menu) return
-      menu.remove()
+      const node = menu
+      node.classList.remove('is-open')
+      setTimeout(() => node.remove(), 120)
       if (menuButton) {
         menuButton.classList.remove('is-active')
         menuButton.setAttribute('aria-expanded', 'false')
@@ -1185,7 +1454,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheetSub.textContent = ''
       addrFilter.value = ''
       addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
-      sheet.classList.add('is-open')
+      panel.classList.add('is-sheet')
       sheet.setAttribute('aria-hidden', 'false')
       setTimeout(() => addrFilter.focus(), 120)
       try {
@@ -1196,7 +1465,6 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetSub.textContent = res.updatedAt ? T.addrSaved(ago(res.updatedAt)) : ''
         if (sheetExport) sheetSelected = new Set(sheetPortfolios().map(([account]) => account)) // Start: alle
         renderAddresses()
-        animateSheet()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
@@ -1220,7 +1488,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheetSub.textContent = ''
       addrFilter.value = ''
       addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
-      sheet.classList.add('is-open')
+      panel.classList.add('is-sheet')
       sheet.setAttribute('aria-hidden', 'false')
       if (!open) openPanel()
       setTimeout(() => addrFilter.focus(), 120)
@@ -1230,26 +1498,16 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetAddresses = res.addresses
         sheetSelected = new Set(sheetWallets().map(([id]) => id)) // Start: alle Wallets
         renderAddresses()
-        animateSheet()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
     }
 
-    // Zeilen der Adressliste nur beim Öffnen gestaffelt einblenden – nicht bei jedem Filter-Tastendruck
-    let sheetAnimTimer = null
-    function animateSheet () {
-      sheet.classList.remove('is-anim')
-      void sheet.offsetWidth
-      sheet.classList.add('is-anim')
-      clearTimeout(sheetAnimTimer)
-      sheetAnimTimer = setTimeout(() => sheet.classList.remove('is-anim'), 1100)
-    }
-
+    // Zurück: Sheet gleitet rechts raus, die Hauptansicht kommt zurück (@xw:sheet läuft rückwärts)
     function closeSheet () {
       sheetWallet = null
       sheetCross = false
-      sheet.classList.remove('is-open')
+      panel.classList.remove('is-sheet')
       sheet.setAttribute('aria-hidden', 'true')
     }
 
@@ -1276,57 +1534,58 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return list
     }
 
-    function renderChips (portfolios, selected) {
+    // groups: [key, label] – Portfolios (pro Wallet) oder Wallets (übergreifend). Der erste Chip ist „Alle“
+    // (key null). Bleibt die Chip-Menge gleich, werden nur Zustände umgeschaltet – so laufen die Rand-
+    // Überblendung und die kleine Feder beim Einschalten (@xw:chip). Neu gebaut wird nur bei neuer Menge.
+    function renderChips (groups, selected) {
       // Bei einem einzelnen Portfolio im normalen Modus sind Tabs überflüssig; im Export-Modus zeigen
-      // wir sie trotzdem (Mehrfachauswahl inkl. „Alle“-Umschalter).
-      if (portfolios.length < 2 && !sheetExport) {
+      // wir sie trotzdem (Mehrfachauswahl inkl. „Alle“).
+      if (groups.length < 2 && !sheetExport) {
         addrChips.classList.add('xw-hide')
+        addrChips.dataset.sig = ''
         return
       }
-
-      if (sheetExport) {
-        // groups: [key, label] – Portfolios (pro Wallet) oder Wallets (übergreifend)
-        const groups = portfolios
-        const allOn = groups.length > 0 && groups.every(([key]) => sheetSelected.has(key))
-        const allChip = el('button', {
-          type: 'button',
-          class: 'xw-chip' + (allOn ? ' is-active' : ''),
-          text: T.exportAll,
-          onclick: () => {
-            if (allOn) sheetSelected.clear()
-            else sheetSelected = new Set(groups.map(([key]) => key))
-            renderAddresses()
-          },
-        })
-        const chips = groups.map(([key, name]) => el('button', {
-          type: 'button',
-          class: 'xw-chip' + (sheetSelected.has(key) ? ' is-active' : ''),
-          text: name,
-          onclick: () => {
-            if (sheetSelected.has(key)) sheetSelected.delete(key)
-            else sheetSelected.add(key)
-            renderAddresses()
-          },
-        }))
-        addrChips.replaceChildren(allChip, ...chips)
-        addrChips.classList.remove('xw-hide')
-        return
+      const sig = [language, sheetExport ? 'x' : 'n', ...groups.map(([k, n]) => k + '=' + n)].join('|')
+      if (addrChips.dataset.sig !== sig) {
+        addrChips.dataset.sig = sig
+        const make = (key, text) => {
+          const node = el('button', { type: 'button', class: 'xw-chip', role: sheetExport ? null : 'tab', text, onclick: () => onChip(key) })
+          node.xwKey = key
+          return node
+        }
+        addrChips.replaceChildren(make(null, sheetExport ? T.exportAll : T.addrAll), ...groups.map(([key, name]) => make(key, name)))
       }
-
-      const chip = (account, text) => el('button', {
-        type: 'button',
-        role: 'tab',
-        class: 'xw-chip' + (selected === account ? ' is-active' : ''),
-        'aria-selected': String(selected === account),
-        text,
-        onclick: () => {
-          sheetPortfolioByWallet.set(sheetWallet.id, account)
-          renderAddresses()
-          addrList.scrollTop = 0
-        },
-      })
-      addrChips.replaceChildren(chip(null, T.addrAll), ...portfolios.map(([account, name]) => chip(account, name)))
+      // „Alle“ ist exklusiv: sind alle gewählt, leuchtet nur „Alle“
+      const allSelected = sheetExport && groups.length > 0 && groups.every(([key]) => sheetSelected.has(key))
+      for (const chip of addrChips.children) {
+        const key = chip.xwKey
+        const on = sheetExport ? (key === null ? allSelected : !allSelected && sheetSelected.has(key)) : selected === key
+        const was = chip.classList.contains('is-active')
+        chip.classList.toggle('is-active', on)
+        if (!sheetExport) chip.setAttribute('aria-selected', String(on))
+        if (on && !was) XW.replay(chip, 'is-on')
+        else if (!on) chip.classList.remove('is-on')
+      }
       addrChips.classList.remove('xw-hide')
+    }
+
+    function onChip (key) {
+      if (!sheetExport) {
+        sheetPortfolioByWallet.set(sheetWallet.id, key)
+        renderAddresses()
+        addrList.scrollTop = 0
+        return
+      }
+      const all = exportGroups().map(([k]) => k)
+      const allSelected = all.length > 0 && all.every((k) => sheetSelected.has(k))
+      if (key === null) sheetSelected = new Set(all) // „Alle“ gewählt
+      else if (allSelected) sheetSelected = new Set([key]) // aus „Alle“ heraus: nur dieses
+      else {
+        if (sheetSelected.has(key)) sheetSelected.delete(key)
+        else sheetSelected.add(key)
+        if (!sheetSelected.size) sheetSelected = new Set(all) // nichts mehr aktiv → wieder „Alle“
+      }
+      renderAddresses()
     }
 
     // Adressen, die aktuell exportiert würden: gewählte Portfolios + Suchfilter, doppelte Adressen raus.
@@ -1345,33 +1604,16 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return out
     }
 
-    // Lichtstrahl um ein Element laufen lassen. Klasse kurz entfernen + Reflow, damit die Animation
-    // auch bei schnellem Doppelklick von vorn startet.
-    function beam (node) {
-      node.classList.remove('xw-beam')
-      void node.offsetWidth
-      node.classList.add('xw-beam')
-      clearTimeout(node.xwBeamTimer)
-      node.xwBeamTimer = setTimeout(() => node.classList.remove('xw-beam'), 1400)
-    }
-
-    let exportDoneTimer = null
+    // Kopieren → Lichtschweif, grüner Rand, Label wechselt; nach 1800 ms zurück. Ein erneuter Klick
+    // während „Copied“ verlängert nur den Timer (XW.confirm), die Animation startet nicht neu.
     async function doExport () {
       const list = exportMatches()
       if (!list.length) return showNotice(T.exportNone, 'error')
       try {
         await call('copyText', list.map((a) => a.address).join('\n'))
+        if (!exportBtn.classList.contains('is-copied')) exportLabelB.textContent = T.exportBtnDone(list.length)
+        XW.confirm(exportBtn, 1800)
         showNotice(T.exportCopied(list.length), 'ok')
-        // Knopf sichtbar auf "kopiert" umstellen, kurz halten, dann zurücksetzen
-        exportBtn.classList.add('is-copied')
-        exportBtn.innerHTML = ''
-        exportBtn.append(el('span', { class: 'xw-btn-ico', html: ICON.check(16) }), el('span', { text: T.exportBtnDone(list.length) }))
-        beam(exportBtn)
-        clearTimeout(exportDoneTimer)
-        exportDoneTimer = setTimeout(() => {
-          exportBtn.classList.remove('is-copied')
-          exportBtn.textContent = T.exportBtn(exportMatches().length)
-        }, 1900)
       } catch (e) {
         fail(e)
       }
@@ -1391,7 +1633,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         const groups = exportGroups()
         renderChips(groups, null)
         const list = exportMatches()
-        exportBtn.textContent = T.exportBtn(list.length)
+        setExportLabels(list.length)
         exportBtn.disabled = !list.length
         exportBar.classList.remove('xw-hide')
         if (!list.length) {
@@ -1463,27 +1705,25 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     // showPortfolio: Portfolio-Namen zusätzlich pro Zeile zeigen (z. B. im wallet-übergreifenden Export)
     function addressRow (a, showPortfolio) {
       const multiPortfolio = showPortfolio !== undefined ? showPortfolio : sheetPortfolios().length > 1
-      const row = el('div', { class: 'xw-addr', role: 'button', tabindex: '0', title: a.address },
+      // Kopier-Bestätigung der Zeile (@xw:row): Adresse ↑ raus, „Address copied“ ↑ rein, Icon morpht
+      // zum Häkchen; hält 1400 ms. Beide Texte liegen im selben Grid-Feld (.xw-addr-sub) – kein Springen.
+      const row = el('div', { class: 'xw-addr xw-addr--cp', role: 'button', tabindex: '0', title: a.address },
         coinIcon(a),
         el('div', { class: 'xw-addr-body' },
           el('div', { class: 'xw-addr-name' },
             el('span', { text: a.label }),
             el('span', { class: 'xw-addr-ticker', text: a.ticker }),
             showPortfolio ? el('span', { class: 'xw-addr-port', text: a.portfolio || a.account }) : null),
-          el('div', { class: 'xw-addr-text', text: a.address })),
-        el('span', { class: 'xw-addr-copy', html: ICON.copy(16) }))
+          el('div', { class: 'xw-addr-sub' },
+            el('span', { class: 'xw-addr-text', text: a.address }),
+            el('span', { class: 'xw-addr-ok', text: T.addrOk }))),
+        el('span', { class: 'xw-addr-copy', html: MORPH(16) }))
       const copy = async () => {
         try {
           const wid = a.walletId || (sheetWallet && sheetWallet.id)
           const res = await call('copyAddress', wid, a.asset, a.account)
-          row.classList.add('is-copied')
-          row.querySelector('.xw-addr-copy').innerHTML = ICON.check(16)
-          beam(row)
+          XW.confirm(row, 1400)
           showNotice(multiPortfolio ? T.addrCopiedFrom(res.ticker, a.portfolio || a.account) : T.addrCopied(res.ticker), 'ok')
-          setTimeout(() => {
-            row.classList.remove('is-copied')
-            row.querySelector('.xw-addr-copy').innerHTML = ICON.copy(16)
-          }, 1800)
         } catch (e) {
           fail(e)
         }
@@ -1504,7 +1744,19 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let gatedNodes = []
     function updateGate () {
       const ok = formConfirm == null || input.value.trim() === formConfirm
-      for (const n of gatedNodes) n.disabled = !ok || formBusy
+      if (ok) input.classList.remove('is-error')
+      for (const n of gatedNodes) {
+        if (n.classList.contains('is-danger')) {
+          // Löschen-Knopf: aria-disabled statt disabled – sonst bekäme er keine Klicks für das Schütteln.
+          // Beim Übergang zu „Name stimmt“ federt er einmal (@xw:delete .is-armed).
+          const armed = ok && !formBusy
+          const wasArmed = n.getAttribute('aria-disabled') === 'false'
+          n.setAttribute('aria-disabled', String(!armed))
+          if (armed && !wasArmed) XW.once(n, 'is-armed')
+        } else {
+          n.disabled = !ok || formBusy
+        }
+      }
     }
     input.addEventListener('input', updateGate)
 
@@ -1515,6 +1767,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       formError.textContent = ''
       input.value = value || ''
       input.placeholder = placeholder || ''
+      input.classList.remove('is-error')
       formConfirm = confirmValue == null ? null : confirmValue
       formActions = buttons
       const cancel = el('button', { type: 'button', class: 'xw-btn', onclick: hideForm, text: T.cancel })
@@ -1549,7 +1802,16 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
 
     async function runForm (button) {
       if (formBusy) return
-      if (!button.free && !gateOpen()) return
+      if (!button.free && !gateOpen()) {
+        // Falscher oder fehlender Name beim Löschen: Feld schüttelt kurz, roter Rand, Fokus zurück.
+        // (main.js prüft den Namen beim Löschen ohnehin noch einmal.)
+        if (button.danger) {
+          input.classList.add('is-error')
+          XW.once(input, 'xw-shake')
+          input.focus()
+        }
+        return
+      }
       formBusy = true
       const nodes = [...formButtons.querySelectorAll('button')]
       for (const n of nodes) n.disabled = true
