@@ -566,6 +566,8 @@
 #xw-root.xw-reduce .xw-roll.is-delayed>.xw-roll-in{animation-delay:var(--xw-roll-d,0ms)!important}
 
 /* ----- Background sync and setup of new wallets ----- */
+/* Cards wait while the Exodus window is not in front: the remaining-time line stands still */
+#xw-root .xw-nt-stack.is-held .xw-nt-card:after{animation-play-state:paused}
 /* "Ready" card: the hint may span two lines */
 #xw-root .xw-nt.is-ready .xw-nt-sub{white-space:normal}
 #xw-root .xw-badge.is-background{background:rgba(255,255,255,.07);color:rgba(255,255,255,.6)}
@@ -1021,10 +1023,20 @@
         return s
       },
       _arm (stack, s) {
-        if (stack.classList.contains('is-paused') || s._gone) return
+        if (stack.classList.contains('is-paused') || stack.classList.contains('is-held') || s._gone) return
         clearTimeout(s._timer)
         s._t0 = performance.now()
         s._timer = setTimeout(() => NT.dismiss(s, 'auto'), Math.max(0, s._left))
+      },
+      // Hold all timers while the Exodus window is not in front (addition to the handoff): a card that
+      // arrives while you are elsewhere waits, and its time only runs once you are back
+      hold (stack, on) {
+        if (stack.classList.contains('is-held') === on) return
+        stack.classList.toggle('is-held', on)
+        stack.querySelectorAll('.xw-nt:not(.is-gone):not(.is-static)').forEach(s => {
+          if (on) { clearTimeout(s._timer); if (s._t0 != null) { s._left -= performance.now() - s._t0; s._t0 = null } }
+          else NT._arm(stack, s)
+        })
       },
       pause (stack, on) {
         stack.classList.toggle('is-paused', on)
@@ -1282,9 +1294,19 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         toggle.classList.add('xw-hide')
         return
       }
-      toggle.classList.remove('xw-hide')
-      toggle.style.top = Math.round(r.top + r.height / 2 - 18) + 'px'
-      toggle.style.left = Math.round(r.left + 24) + 'px'
+      const top = Math.round(r.top + r.height / 2 - 18)
+      const left = Math.round(r.left + 24)
+      toggle.style.top = top + 'px'
+      toggle.style.left = left + 'px'
+      // The button is only shown on the bare navigation bar. If something of Exodus lies on top of that
+      // spot (e.g. the send dialog with its "advanced options" gear for some coins), it steps aside
+      // instead of covering Exodus' own controls. While the sidebar is open it always stays.
+      let covered = false
+      if (!open) {
+        const under = document.elementsFromPoint(left + 18, top + 18).find((node) => !root.contains(node))
+        covered = !!under && !nav.contains(under) && under !== document.body && under !== document.documentElement
+      }
+      toggle.classList.toggle('xw-hide', covered)
     }
     placeToggle()
     setInterval(placeToggle, 600)
@@ -2389,6 +2411,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       const name = ev.wallet || T.standard
       const here = state && state.wallets.find((w) => w.isCurrent)
       const own = here && ev.walletId && here.id === ev.walletId
+      syncHold()
       const card = XW.nt.notify(ntStack, {
         wallet: { name, img: ev.avatar || 'svg/brand/exodus-logomark.svg' },
         coin: { name: T.readySub, ticker: '', icon: READY_ICON },
@@ -2421,10 +2444,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if (ev.language) applyLanguage(ev.language)
       const hidden = !!ev.hidden
       const name = ev.wallet || T.standard
-      // Exodus plays receive.wav itself on every incoming payment – also in a background wallet's window. If it
-      // already did (main.js keeps count), the card stays silent: the same sound, exactly once.
+      // Exodus plays receive.wav itself on every incoming payment. In a background wallet main.js holds that
+      // sound back and the card plays it – card and sound in the same moment. If the receiving wallet's window
+      // is visible, Exodus has already played it there (exodusSound) and the card stays silent: one sound only.
       const sound = ev.exodusSound || (ev.sound && ev.sound.on === false) ? null : receiveSound
       if (sound && ev.sound && typeof ev.sound.volume === 'number') sound.volume = ev.sound.volume
+      syncHold()
       const card = XW.nt.notify(ntStack, {
         wallet: { name, img: ev.avatar || 'svg/brand/exodus-logomark.svg' },
         coin: { name: ev.coin || ev.ticker, ticker: ev.ticker, icon: ev.icon || null },
@@ -2455,8 +2480,23 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       onReceived(ev).catch((e) => debug('Incoming-payment display failed: ' + e.message))
     })
 
+    // Cards only count down while this Exodus window is in front – otherwise they wait for you
+    const syncHold = () => XW.nt.hold(ntStack, !document.hasFocus())
+    window.addEventListener('blur', () => XW.nt.hold(ntStack, true))
+    syncHold()
+
+    // Exodus is playing its receive sound right now (hook in the page, see soundHookJs in main.js):
+    // tell main.js at once, so it checks the balances immediately and the card comes with the sound
+    document.addEventListener('xw-exodus-receive', () => {
+      try { ipcRenderer.send('exodus-wallets:exodus-receive') } catch (e) {}
+    })
+
     // When switching back to the window, reload the other wallets' balances right away
-    window.addEventListener('focus', () => { if (open) refresh() })
+    // and let waiting cards run
+    window.addEventListener('focus', () => {
+      XW.nt.hold(ntStack, false)
+      if (open) refresh()
+    })
 
     // Show the wallet count on the button and pick up the language early
     setTimeout(() => { if (!state) refresh() }, 8000)

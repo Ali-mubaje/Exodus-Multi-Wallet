@@ -23,7 +23,9 @@ work but not yet tested against a specific version.
 - **Multiple wallets side by side** – each in its own data folder under the Exodus-Wallets directory,
   each with its own 12-word phrase.
 - **One-click switching** – open a wallet, jump to an already-running window, or *Switch* to close the
-  current wallet and open another.
+  current wallet and open another – the new window appears exactly where the old one was, in the same
+  size (maximized if the old one was). With background sync the wallet is already loaded, so switching
+  is almost instant.
 - **Several wallets open at once** – each wallet runs in its own Exodus window/process, so you can keep
   multiple wallets open side by side; the sidebar marks which ones are currently running.
 - **Combined total up top** – the value of all wallets together; with mixed currencies shown as
@@ -37,14 +39,17 @@ work but not yet tested against a specific version.
   closed until you open them again. When the last Exodus window closes, the background wallets quit too.
   Switch it off in the sidebar (*Sync all wallets in the background*). Wallets with a password stay
   locked in the background until you open them once and unlock them – the sidebar marks them.
-- **Incoming-payment notifications** – when another wallet receives funds, the window you're working
-  in shows a small card at the top left: coin (with the original Exodus icon), amount, value at the time
-  it arrived, wallet and portfolio. Click the card to jump to that wallet. With the sidebar closed, a
-  green dot/counter on the wallet button marks unseen payments; opening the sidebar makes the wallet's
-  row glow and its balance roll up. Payments to the wallet of the current window are left to Exodus' own
-  notification, and only the window in front shows the card. The sound is Exodus' own receive sound,
-  exactly once: Exodus already plays it in the receiving wallet's (even hidden) window, so the card only
-  plays it itself if Exodus didn't. Hidden balances hide the amount here too.
+- **Incoming-payment notifications** – when another wallet receives funds, the Exodus window you're
+  working in shows a small card at the top left: coin (with the original Exodus icon), amount, value at
+  the time it arrived, wallet and portfolio – together with Exodus' own receive sound, in the same moment.
+  Click the card to jump to that wallet. If you're not looking at Exodus, the card waits in the Exodus
+  window you used last (its timer only runs once that window is in front again), and a system
+  notification appears next to the clock (macOS: Notification Center). With the sidebar closed, a green
+  dot/counter on the wallet button marks unseen payments; opening the sidebar makes the wallet's row glow
+  and its balance roll up. Payments to the wallet of the current window are left to Exodus' own display.
+  The sound plays exactly once: for a background wallet the card plays it; if the receiving wallet's
+  window is visible, Exodus plays it there and the card stays silent. Hidden balances hide the amount in
+  the card and the system notification too.
 - **Setup progress for new wallets** – after *Create*, *Restore with 12 words* or *Adopt old folder*, the
   wallet needs to stay open until Exodus has loaded everything. The sidebar shows what's happening
   (e.g. *Restoring – 12 coins left · keep it open*), and a **Ready** card appears once all balances and

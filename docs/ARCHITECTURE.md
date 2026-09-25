@@ -117,10 +117,11 @@ refuse to patch while the app is open.
   focused window like a payment – including the wallet's own window.
 
 ### Incoming-payment notifications
-- **Detect (every window, for its own wallet):** every 3 s `HOLDINGS_JS` reads the coin amount per
-  portfolio and asset (`selectors.balances.getBalances(...).balance`) plus Exodus' own fiat value for it
-  (`selectors.fiatBalances.byAssetSource`). The last amounts are kept in memory only; an increase is a
-  payment.
+- **Detect (every window, for its own wallet):** `HOLDINGS_JS` reads the coin amount per portfolio and
+  asset (`selectors.balances.getBalances(...).balance`) plus Exodus' own fiat value for it
+  (`selectors.fiatBalances.byAssetSource`) – every 3 s, and **immediately** when Exodus plays its receive
+  sound (see *One sound*), then every 0.5 s for up to 20 s until the new amount shows up. The last
+  amounts are kept in memory only; an increase is a payment.
 - **No false alarms:** the first read and the first 30 s after the UI is ready only set the baseline
   (Exodus is still loading/syncing). A lower amount (a send, or an asset briefly missing while loading)
   is only accepted once it has stayed lower for 20 s.
@@ -128,17 +129,28 @@ refuse to patch while the app is open.
   one JSON file per payment to `Exodus-Wallets/.incoming/` – wallet, asset, amount, fiat value at that
   moment, currency, portfolio (only with several portfolios). If that window is in front, nothing is
   written: Exodus shows its own notification there.
-- **Deliver (only the focused window):** every second the window in front (`BaseWindow.getFocusedWindow()`)
-  claims open events by creating `<id>.done` with the exclusive `wx` flag – whoever creates it shows the
-  card, so card and sound appear in exactly one window. Events of its own wallet are claimed silently.
-  It adds the coin icon as a `data:` URL, the wallet picture, the hide-balances setting and Exodus'
-  sound setting (`config` keys `sounds.all.enabled` / `sounds.all.volume`) and sends
-  `exodus-wallets:received`. Undelivered events expire after 10 min; old files are pruned.
-- **One sound:** Exodus plays `receive.wav` itself on `TX_RECEIVE` in the receiving wallet's window –
-  even when that window is hidden. `STATUS_JS` therefore wraps `HTMLMediaElement.prototype.play` in the
-  page (observe only, it always calls the original) and counts `receive.wav` plays. If the count went up
-  around the payment (checked 1.5 s after detection), the event carries `exodusSound: true` and the card
-  stays silent.
+- **Deliver (one window):** `isCardTarget()` picks the window in front (`BaseWindow.getFocusedWindow()`)
+  – or, when no Exodus window is in front, the visible one used last (each window writes `focused` /
+  `focusedAt` to its live file; hidden instances never deliver). The target claims open events by
+  creating `<id>.done` with the exclusive `wx` flag – whoever creates it shows the card, so card and sound
+  appear in exactly one window. It reacts at once via `fs.watch` on the events folder (1 s timer as a
+  fallback). It adds the coin icon as a `data:` URL, the wallet picture, the hide-balances setting and
+  Exodus' sound setting (`config` keys `sounds.all.enabled` / `sounds.all.volume`) and sends
+  `exodus-wallets:received`. Events of its own wallet get no card (Exodus shows them). Undelivered
+  events expire after 10 min; old files are pruned.
+- **Not in front:** if the target window is not in front, the card waits there – `XW.nt.hold()` stops all
+  card timers while the page has no focus (`blur`/`focus`) – and a silent Electron `Notification`
+  (Windows: Action Center next to the clock, macOS: Notification Center) announces the payment; a click
+  brings that Exodus window to the front. (Exodus is installed via Squirrel, so Electron sets the
+  AppUserModelId Windows needs for this automatically.)
+- **One sound, in sync with the card:** Exodus plays `receive.wav` itself on `TX_RECEIVE` in the
+  receiving wallet's window – even when that window is hidden. `soundHookJs()` wraps
+  `HTMLMediaElement.prototype.play` in the page: for `receive.wav` it fires a DOM event
+  (`xw-exodus-receive`), which the preload forwards as IPC `exodus-wallets:exodus-receive`, so the check
+  runs at once (measured: 24 ms from the sound to main.js). In a hidden instance the hook holds Exodus'
+  sound back (`hold`) and the card plays the same file when it appears – same moment, one sound. In a
+  visible window Exodus plays it itself; the event then carries `exodusSound: true` and the card stays
+  silent.
 - **Only running wallets** are watched – with background sync that is every wallet while any Exodus
   window is open.
 
@@ -157,6 +169,14 @@ refuse to patch while the app is open.
   set, `redirectToStartWallet()` relaunches into that folder and exits.
 - Our own launches carry `EXODUS_WALLETS_DIRECT=1` and are not redirected; shortcuts always use
   `--datadir`.
+
+### Switch: same place, same size
+- *Switch* writes the current main window's normal bounds plus maximized/full-screen state to
+  `wallet-switcher-place.json` in the target wallet's folder, then opens it. The target applies it before
+  its window is shown: a fresh start in `watchUi()` (our `did-finish-load` handler runs before Exodus'
+  own, which shows the window; maximize follows 600 ms later), a background wallet in `revealWindows()`,
+  an already open window in the `second-instance` handler. The file is used once and only if younger
+  than 60 s.
 
 ### Command channel between windows
 - Each wallet runs in its own process. For "close", "focus" and "show backup", `main.js` drops a
@@ -190,6 +210,10 @@ refuse to patch while the app is open.
 - Builds `#xw-root` directly on `body`. Because the Exodus theme class sits on an element inside
   `#app-container`, `syncTheme()` copies the computed CSS variables over.
 - CSS is deliberately shielded against Exodus with `!important` and a maximal `z-index`.
+- The wallet button sits in the empty left part of Exodus' navigation bar. `placeToggle()` (every
+  600 ms) checks with `document.elementsFromPoint()` what lies under it; if anything of Exodus other than
+  the navigation is there (e.g. the send dialog with its "advanced options" gear), the button hides until
+  the spot is free again, so it never covers Exodus' own controls.
 - All privileged actions go through `ipcRenderer.invoke('exodus-wallets:*')`; `main.js` checks the
   sender URL and session before doing anything.
 - **Notifications** (`XW.nt`): cards live in `.xw-nt-stack` inside `#xw-root`, below the backdrop and
@@ -210,6 +234,7 @@ refuse to patch while the app is open.
 | `wallet-switcher-live.json` | live status of the running instance (pid, hidden, sync state) |
 | `wallet-switcher-pause` | do not start in the background until this timestamp |
 | `wallet-switcher-bgstart` | last background start (prevents double starts) |
+| `wallet-switcher-place.json` | window place/size handed over by *Switch* (used once) |
 
 Global, under `Exodus-Wallets`: `settings.json` (settings incl. start wallet, default-wallet
 display name), `imported.log` (adopted old folders) and `.incoming/` (short-lived incoming-payment

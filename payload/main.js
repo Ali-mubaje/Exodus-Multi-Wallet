@@ -15,7 +15,7 @@
  */
 
 // BaseWindow exists only from Electron 30 on – Exodus uses it for its main window
-const { app, BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } = require('electron')
+const { app, BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, Notification, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -126,6 +126,10 @@ const MESSAGES = {
     deleteConfirm: 'The name does not match – please type it exactly.',
     deleteRunning: 'This wallet is open. It has to be closed first.',
     trashFailed: (msg) => `The wallet could not be moved to the Recycle Bin (${msg}). Nothing was deleted.`,
+    notifyReceived: (amount, ticker) => `Received ${amount} ${ticker}`,
+    notifyReceivedHidden: (ticker) => `Received ${ticker}`,
+    notifyReadyTitle: (wallet) => `${wallet} is ready`,
+    notifyReadyBody: 'Everything loaded – you can close it.',
   },
   de: {
     standard: 'Standard',
@@ -161,6 +165,10 @@ const MESSAGES = {
     deleteConfirm: 'Der Name stimmt nicht überein – bitte genau so eintippen.',
     deleteRunning: 'Diese Wallet ist geöffnet. Sie muss zuerst geschlossen werden.',
     trashFailed: (msg) => `Die Wallet konnte nicht in den Papierkorb verschoben werden (${msg}). Es wurde nichts gelöscht.`,
+    notifyReceived: (amount, ticker) => `${amount} ${ticker} erhalten`,
+    notifyReceivedHidden: (ticker) => `${ticker} erhalten`,
+    notifyReadyTitle: (wallet) => `${wallet} ist bereit`,
+    notifyReadyBody: 'Alles geladen – du kannst sie schließen.',
   },
 }
 
@@ -623,6 +631,13 @@ function revealWindows () {
   if (process.platform === 'darwin' && app.dock) app.dock.show()
   for (const win of ghosts) if (!win.isDestroyed()) setGhostLook(win, false)
   ghosts.clear()
+  // Opened via "Switch": take over the old window's place and size
+  const place = takePlacement()
+  const main = mainWindow()
+  if (place && main) {
+    applyPlacement(main, place, false)
+    suppressed.set(main, { maximize: !!place.maximized, fullScreen: !!place.fullScreen })
+  }
   for (const [win, intent] of suppressed) {
     if (win.isDestroyed()) continue
     setGhostLook(win, false)
@@ -632,6 +647,7 @@ function revealWindows () {
   }
   suppressed.clear()
   debug(`Background: showing ${currentWalletLabel()}`)
+  syncSoundHook() // visible again: Exodus plays its receive sound itself
   writeLive(true)
   focusWindows()
 }
@@ -649,7 +665,54 @@ function hideToBackground () {
     }
   })
   debug(`Background: ${currentWalletLabel()} now keeps running invisibly`)
+  syncSoundHook() // hidden: hold Exodus' receive sound back, the card plays it
+  updateFocus()
   writeLive(true)
+}
+
+// "Switch": the new wallet's window appears exactly where the old one was, in the same size (and
+// maximized/full screen if the old one was). The old window leaves its placement in the target wallet's
+// folder; the target applies it before its window is shown – whether it starts now, runs in the
+// background or is already open.
+const PLACE_FILE = 'wallet-switcher-place.json'
+const PLACE_MAX_AGE_MS = 60 * 1000
+function mainWindow () {
+  const Win = BaseWindow || BrowserWindow
+  return Win.getAllWindows().find((w) => !w.isDestroyed() && isMainWindow(w)) || null
+}
+function rememberPlacement (targetDir) {
+  const win = mainWindow()
+  if (!win) return
+  const place = {
+    at: Date.now(),
+    bounds: typeof win.getNormalBounds === 'function' ? win.getNormalBounds() : win.getBounds(),
+    maximized: win.isMaximized(),
+    fullScreen: typeof win.isFullScreen === 'function' && win.isFullScreen(),
+  }
+  try { writeJson(path.join(targetDir, PLACE_FILE), place) } catch (e) {}
+}
+function takePlacement () {
+  const file = path.join(currentDir(), PLACE_FILE)
+  if (!exists(file)) return null
+  const place = readJson(file)
+  try { fs.unlinkSync(file) } catch (e) {}
+  if (!place || typeof place.at !== 'number' || Date.now() - place.at > PLACE_MAX_AGE_MS || !place.bounds) return null
+  return place
+}
+// withState: also maximize / full screen (only once the window is shown – maximize() would show it early)
+function applyPlacement (win, place, withState) {
+  if (!win || win.isDestroyed() || !place) return
+  own(() => {
+    try {
+      if (typeof win.isFullScreen === 'function' && win.isFullScreen() && !place.fullScreen) win.setFullScreen(false)
+      if (win.isMaximized() && !place.maximized) win.unmaximize()
+      if (!win.isMaximized()) win.setBounds(place.bounds)
+      if (withState && place.maximized && !win.isMaximized()) win.maximize()
+      if (withState && place.fullScreen && typeof win.isFullScreen === 'function' && !win.isFullScreen()) win.setFullScreen(true)
+    } catch (e) {
+      debug('Placement failed: ' + e.message)
+    }
+  })
 }
 
 // Does Exodus want to show its unlock window (password needed)? That window is a separate page
@@ -676,7 +739,7 @@ let liveStatus = { state: 'starting' }
 let liveWritten = ''
 let liveWrittenAt = 0
 function writeLive (force) {
-  const data = { pid: process.pid, hidden: hiddenMode, ...liveStatus }
+  const data = { pid: process.pid, hidden: hiddenMode, focused: wasFocused, focusedAt: focusChangedAt, ...liveStatus }
   const key = JSON.stringify(data)
   if (!force && key === liveWritten && Date.now() - liveWrittenAt < 10 * 1000) return
   liveWritten = key
@@ -1137,41 +1200,54 @@ async function fetchAddresses (wc) {
 // window and never by that of the receiving wallet itself – there Exodus shows the incoming payment anyway.
 // ---------------------------------------------------------------------------------------------
 
-// Wallet state from Exodus' own state: locked (password), onboarding (no wallet yet),
-// restoring (restoringAssets = coins still being loaded), balances loaded.
-// It also counts how often Exodus itself plays receive.wav in this window: Exodus plays the
-// sound on every incoming payment in every window, even hidden – then our card stays silent (no double sound).
+// Wallet state from Exodus' own state: onboarding (no wallet yet), restoring (restoringAssets = coins
+// still being loaded), balances loaded. (Locked comes from Exodus' unlock window, see unlockWanted().)
 const STATUS_JS = `(() => {
   try {
     const store = globalThis.store, s = globalThis.selectors
     if (!store) return { error: 'no-store' }
-    if (!globalThis.__xwReceiveSounds) {
-      globalThis.__xwReceiveSounds = { n: 0 }
-      const play = HTMLMediaElement.prototype.play
-      HTMLMediaElement.prototype.play = function () {
-        try { if (/receive\\.wav$/i.test(String(this.src || ''))) globalThis.__xwReceiveSounds.n++ } catch (e) {}
-        return play.apply(this, arguments)
-      }
-    }
     const st = store.getState()
     const a = st.application || {}
     const r = st.restoringAssets || {}
     let fiatLoaded = null
     try { if (s && s.fiatBalances && typeof s.fiatBalances.loaded === 'function') fiatLoaded = !!s.fiatBalances.loaded(st) } catch (e) {}
     return {
-      loading: !!a.isLoading,
-      locked: !!a.isLocked,
       walletExists: a.walletExists !== false,
       restoring: !!a.isRestoring,
       restoringLeft: r.loaded && r.data ? Object.keys(r.data).length : 0,
       fiatLoaded,
-      sounds: globalThis.__xwReceiveSounds.n,
     }
   } catch (e) {
     return { error: String((e && e.message) || e) }
   }
 })()`
-const SOUNDS_JS = '(globalThis.__xwReceiveSounds && globalThis.__xwReceiveSounds.n) || 0'
+
+// Exodus plays receive.wav itself on every incoming payment (redux action TX_RECEIVE) – in every window,
+// even a hidden one. This hook in the page tells us about it right away (DOM event → preload → IPC), so
+// the payment check runs at once instead of up to 3 s later. In a background wallet (hold = true) the
+// sound is held back: the card then plays exactly the same receive.wav in the window you look at – in the
+// same moment the card appears. Visible windows keep Exodus' own sound untouched.
+const soundHookJs = (hold) => `(() => {
+  let h = globalThis.__xwReceive
+  if (!h) {
+    h = globalThis.__xwReceive = { hold: false }
+    const play = HTMLMediaElement.prototype.play
+    HTMLMediaElement.prototype.play = function () {
+      try {
+        if (/receive\\.wav$/i.test(String(this.src || ''))) {
+          document.dispatchEvent(new CustomEvent('xw-exodus-receive'))
+          if (h.hold) return Promise.resolve()
+        }
+      } catch (e) {}
+      return play.apply(this, arguments)
+    }
+  }
+  h.hold = ${hold ? 'true' : 'false'}
+  return true
+})()`
+function syncSoundHook () {
+  if (uiContents && !uiContents.isDestroyed()) runInUi(uiContents, soundHookJs(hiddenMode), 1000)
+}
 
 // starting → onboarding (Exodus asks: new or restore) → locked (password: Exodus shows its unlock
 // window) → restoring (coins are being loaded) → syncing (balances still missing) → ready.
@@ -1197,18 +1273,42 @@ let holdingsBase = null
 let holdingsSince = 0
 let holdingsBusy = false
 const holdingsLow = new Map()
-let soundsSeen = null // how often Exodus has played receive.wav here, as far as already assigned to an incoming payment
+let soundPlayedAt = 0 // when Exodus last played receive.wav in this (visible) window
 
 const focusedHere = () => !!(BaseWindow && typeof BaseWindow.getFocusedWindow === 'function' && BaseWindow.getFocusedWindow())
 
+// Exodus just played (or, in the background, wanted to play) receive.wav: check the balances right away
+// and then briefly again and again – the new amount normally arrives within a few hundred milliseconds
+let rushUntil = 0
+let rushing = false
+function exodusReceived () {
+  if (!hiddenMode) soundPlayedAt = Date.now()
+  rushUntil = Date.now() + 20 * 1000
+  if (rushing) return
+  rushing = true
+  ;(async () => {
+    try {
+      while (Date.now() < rushUntil && uiContents && !uiContents.isDestroyed()) {
+        if (await checkHoldings(uiContents)) break
+        await sleep(500)
+      }
+    } catch (e) {
+      debug('Incoming-payment error: ' + e.message)
+    } finally {
+      rushing = false
+    }
+  })()
+}
+
+// Returns true if an incoming payment was found
 async function checkHoldings (wc) {
-  if (!wc || wc.isDestroyed() || holdingsBusy) return
+  if (!wc || wc.isDestroyed() || holdingsBusy) return false
   holdingsBusy = true
   try {
     const res = await runInUi(wc, HOLDINGS_JS, 3000)
     if (!res || res.error || !Array.isArray(res.holdings)) {
       logStatus('Incoming', 'no value – ' + ((res && res.error) || 'empty'))
-      return
+      return false
     }
     logStatus('Incoming', 'ok')
     const now = Date.now()
@@ -1218,7 +1318,7 @@ async function checkHoldings (wc) {
     // First read and warmup phase: only remember the state, don't report anything
     if (!holdingsBase || now - holdingsSince < RECEIVED_WARMUP_MS) {
       holdingsBase = amounts()
-      return
+      return false
     }
     const tiny = (n) => Math.max(1e-12, n * 1e-9)
     const received = []
@@ -1240,17 +1340,20 @@ async function checkHoldings (wc) {
       if (amount > 0) holdingsBase.set(k, amount)
       else holdingsBase.delete(k)
     }
-    if (!received.length) return
+    if (!received.length) return false
     // Save the balance immediately: the other windows read it as soon as they show the card, and roll the balance
     await snapshotBalance(wc)
-    // Has Exodus already played receive.wav here itself (even in a hidden window)? Wait briefly –
-    // Exodus' sound and the new balance don't always arrive at the same moment. Then the card stays silent.
-    await sleep(1500)
-    const n = await runInUi(wc, SOUNDS_JS, 1000)
-    const exodusSound = typeof n === 'number' && soundsSeen != null && n > soundsSeen
-    if (typeof n === 'number') soundsSeen = n
+    // Sound: in a background wallet Exodus' own receive.wav was held back, so the card plays it. In a visible
+    // window Exodus plays it itself and the card stays silent (no double sound) – Exodus' sound and the new
+    // balance don't always arrive in the same instant, so wait briefly for the sound if it hasn't come yet.
+    let exodusSound = false
+    if (!hiddenMode) {
+      if (!soundPlayedAt) await sleep(1500)
+      exodusSound = !!soundPlayedAt && Date.now() - soundPlayedAt < 60 * 1000
+      soundPlayedAt = 0
+    }
     // This window is in front? Then Exodus shows the incoming payment itself – no second window should report it too
-    if (focusedHere()) { debug(`Incoming payment detected (${currentWalletLabel()}), window is in front – Exodus shows it itself`); return }
+    if (focusedHere()) { debug(`Incoming payment detected (${currentWalletLabel()}), window is in front – Exodus shows it itself`); return true }
     const me = walletDirs().find((x) => isCurrent(x.dir))
     fs.mkdirSync(eventsDir(), { recursive: true })
     for (const { h, diff } of received) {
@@ -1274,8 +1377,10 @@ async function checkHoldings (wc) {
       writeJson(path.join(eventsDir(), ev.id + '.json'), ev)
       debug(`Incoming payment detected: ${ev.wallet} – ${ev.ticker}`)
     }
+    return true
   } catch (e) {
     debug('Incoming-payment error: ' + e.message)
+    return false
   } finally {
     holdingsBusy = false
   }
@@ -1294,12 +1399,108 @@ const SOUND_JS = `(() => {
   }
 })()`
 
-// Runs in every window every second, but only does something while this window is in front
+// Focus bookkeeping: every visible window notes in its live file whether it is in front and when that
+// last changed – so a card can go to the Exodus window you used last when none is in front right now
+let wasFocused = false
+let focusChangedAt = 0
+function updateFocus () {
+  const f = !hiddenMode && focusedHere()
+  if (f === wasFocused) return
+  wasFocused = f
+  focusChangedAt = Date.now()
+  if (uiContents) writeLive(true)
+}
+
+// Which window shows the card? The one in front – or, if no Exodus window is in front, the visible one
+// used last: the card waits there until you come back (its timer only runs while the window is in
+// front), and a system notification next to the clock tells you about it in the meantime.
+function isCardTarget () {
+  if (hiddenMode || !uiContents || uiContents.isDestroyed()) return false
+  if (wasFocused) return true
+  for (const w of walletDirs()) {
+    if (isCurrent(w.dir) || !lockAlive(w.dir)) continue
+    const live = readLive(w.dir)
+    if (!live || live.hidden) continue
+    if (live.focused || (live.focusedAt || 0) > focusChangedAt) return false
+  }
+  return true
+}
+
+// System notification (Windows: next to the clock / Action Center, macOS: Notification Center) while
+// you are not looking at Exodus. Silent: the card plays Exodus' receive sound. Clicking it brings the
+// Exodus window with the card to the front.
+const systemNotes = new Set() // keep references, or the click handler may be garbage-collected
+function formatNumber (n, opts) {
+  try { return new Intl.NumberFormat(uiLanguage || 'en', opts).format(n) } catch (e) { return String(n) }
+}
+function formatAmount (n) {
+  const text = formatNumber(n, { maximumFractionDigits: 8 })
+  return /[1-9]/.test(text) ? text : formatNumber(n, { maximumSignificantDigits: 4 }) // tiny token amounts
+}
+function formatMoney (value, currency) {
+  try {
+    if (currency && /^[A-Z]{3}$/.test(currency)) return new Intl.NumberFormat(uiLanguage || 'en', { style: 'currency', currency }).format(value)
+  } catch (e) {}
+  return formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (currency ? ' ' + currency : '')
+}
+function systemNotify (ev, wallet) {
+  try {
+    if (!Notification || typeof Notification.isSupported !== 'function' || !Notification.isSupported()) return
+    const hidden = !!readSettings().hideBalances
+    let title
+    let body
+    if (ev.type === 'ready') {
+      title = t('notifyReadyTitle', wallet)
+      body = t('notifyReadyBody')
+    } else {
+      title = hidden ? t('notifyReceivedHidden', ev.ticker) : t('notifyReceived', formatAmount(ev.amount), ev.ticker)
+      const parts = [wallet]
+      if (ev.portfolio) parts.push(ev.portfolio)
+      if (!hidden && typeof ev.value === 'number') parts.push('≈ ' + formatMoney(ev.value, ev.currency))
+      body = parts.join(' · ')
+    }
+    const options = { title, body, silent: true }
+    const avatar = path.join(ev.dir, AVATAR_FILE)
+    if (exists(avatar)) {
+      const img = nativeImage.createFromPath(avatar)
+      if (!img.isEmpty()) options.icon = img
+    }
+    const note = new Notification(options)
+    systemNotes.add(note)
+    const drop = () => systemNotes.delete(note)
+    note.on('click', () => { drop(); focusWindows() })
+    note.on('close', drop)
+    note.show()
+    setTimeout(drop, 10 * 60 * 1000)
+  } catch (e) {
+    debug('System notification failed: ' + e.message)
+  }
+}
+
+// Deliver new events right away when their file appears (the 1 s timer stays as a fallback)
+let eventsWatcher = null
+function watchEvents () {
+  if (eventsWatcher) return
+  try {
+    fs.mkdirSync(eventsDir(), { recursive: true })
+    eventsWatcher = fs.watch(eventsDir(), () => { deliverReceived().catch(() => {}) })
+    eventsWatcher.on('error', () => {
+      try { eventsWatcher.close() } catch (e) {}
+      eventsWatcher = null
+    })
+  } catch (e) {
+    eventsWatcher = null
+  }
+}
+
+// Runs in every window every second (and at once when an event file appears), but only delivers in the
+// window that should show the card (see isCardTarget)
 let lastPrune = 0
 let delivering = false
 async function deliverReceived () {
+  updateFocus()
   const wc = uiContents
-  if (delivering || !wc || wc.isDestroyed() || !focusedHere()) return
+  if (delivering || !wc || wc.isDestroyed() || !isCardTarget()) return
   let files = []
   try { files = fs.readdirSync(eventsDir()) } catch (e) { return }
   delivering = true
@@ -1321,23 +1522,29 @@ async function deliverReceived () {
     for (const { ev, done } of open) {
       // Whoever creates the .done file shows the incoming payment: card and sound thus come in only one window
       try { fs.closeSync(fs.openSync(done, 'wx')) } catch (e) { continue }
-      // The own wallet: Exodus has already shown the incoming payment in this window itself – just mark
-      // it as done. "Setup finished", on the other hand, is shown by the own window too (that's what you're waiting for there).
-      if (isCurrent(ev.dir) && ev.type !== 'ready') continue
+      const w = walletDirs().find((x) => norm(x.dir) === norm(ev.dir))
+      const wallet = w ? (w.isStandard ? standardLabel() : w.name) : ev.wallet
+      // The own wallet: Exodus shows the incoming payment in this window itself – no card. If you are not
+      // looking at Exodus right now, the system notification still tells you. "Setup finished", on the
+      // other hand, is shown by the own window too (that's what you're waiting for there).
+      if (isCurrent(ev.dir) && ev.type !== 'ready') {
+        if (!wasFocused) systemNotify(ev, wallet)
+        continue
+      }
       if (!sound && ev.type !== 'ready') sound = await runInUi(wc, SOUND_JS, 1000)
       if (!sound || sound.error) sound = { on: true, volume: 1 }
-      const w = walletDirs().find((x) => norm(x.dir) === norm(ev.dir))
       if (wc.isDestroyed()) return
       wc.send('exodus-wallets:received', {
         ...ev,
         walletId: w && !w.external ? w.id : ev.walletId,
-        wallet: w ? (w.isStandard ? standardLabel() : w.name) : ev.wallet,
+        wallet,
         avatar: avatarFor(ev.dir),
         icon: ev.asset ? iconDataFor(ev.asset, ev.dir) : null,
         hidden: !!readSettings().hideBalances,
         language: uiLanguage,
         sound,
       })
+      if (!wasFocused) systemNotify(ev, wallet)
     }
   } finally {
     delivering = false
@@ -1417,8 +1624,9 @@ async function tick (wc) {
   if (!wc || wc.isDestroyed() || ticking) return
   ticking = true
   try {
+    // (Re)install the receive-sound hook and set whether it holds Exodus' sound back (background wallet)
+    await runInUi(wc, soundHookJs(hiddenMode), 1000)
     const res = await runInUi(wc, STATUS_JS, 2000)
-    if (res && typeof res.sounds === 'number' && soundsSeen == null) soundsSeen = res.sounds
     const next = statusFrom(res, unlockWanted())
     // During a new wallet's first address query: "saving addresses"
     liveStatus = settingUp && next.state === 'ready' ? { state: 'addresses' } : next
@@ -1457,6 +1665,7 @@ function rememberUi (wc) {
   if (!tickTimer) tickTimer = setInterval(() => tick(uiContents), HOLDINGS_EVERY_MS)
   // New UI (e.g. after a reload): re-read the baseline
   holdingsBase = null
+  syncSoundHook()
   snapshotBalance(wc)
 }
 
@@ -1518,6 +1727,8 @@ const api = {
     if (!hasWallet(w.dir) && exists(path.join(w.dir, RESTORE_MARKER))) fs.writeFileSync(path.join(w.dir, RESTORE_FLAG), '')
     resumeBackground(w.dir) // opened again → may run along in the background again too
     const wasRunning = isRunning(w.dir)
+    // "Switch": the new window takes over this window's place and size
+    if (switchTo) rememberPlacement(w.dir)
     // If it's running invisibly in the background, the restart (Exodus' "second-instance") brings its window to the front
     launch(w.dir)
     if (switchTo) setTimeout(() => app.quit(), 1500)
@@ -1815,7 +2026,20 @@ function isTrustedSender (event) {
 function watchUi (wc) {
   if (!wc || !isMainSession(wc.session)) return
   wc.on('did-finish-load', () => {
-    try { if (isUiUrl(wc.getURL())) rememberUi(wc) } catch (e) { debug('watchUi error: ' + e.message) }
+    try {
+      if (!isUiUrl(wc.getURL())) return
+      // Started via "Switch": place the window where the old one was. This handler runs before Exodus'
+      // own (which then shows the window); once shown, maximize/full screen follows and wins over
+      // Exodus' remembered window state.
+      const place = !hiddenMode && takePlacement()
+      if (place) {
+        applyPlacement(mainWindow(), place, false)
+        setTimeout(() => applyPlacement(mainWindow(), place, true), 600)
+      }
+      rememberUi(wc)
+    } catch (e) {
+      debug('watchUi error: ' + e.message)
+    }
   })
 }
 
@@ -1850,7 +2074,16 @@ try {
     // Whoever opens a background wallet starts Exodus for its folder again – Exodus reports this to the
     // running instance as "second-instance". Our handler runs before Exodus' own (which focuses the window).
     app.on('second-instance', () => {
-      try { if (hiddenMode) revealWindows() } catch (e) { debug('Showing failed: ' + e.message) }
+      try {
+        if (hiddenMode) revealWindows()
+        else {
+          // Already visible and opened via "Switch": move it to the old window's place and size
+          const place = takePlacement()
+          if (place) applyPlacement(mainWindow(), place, true)
+        }
+      } catch (e) {
+        debug('Showing failed: ' + e.message)
+      }
     })
     debug('Registering event handlers...')
     app.on('session-created', (ses) => {
@@ -1866,6 +2099,7 @@ try {
       setInterval(() => { try { refreshWindowTitles() } catch (e) { debug('Window-title error: ' + e.message) } }, 1500)
       setInterval(() => { checkCommands().catch((e) => debug('Command error: ' + e.message)) }, 1000)
       setInterval(() => { deliverReceived().catch((e) => debug('Incoming-payment error: ' + e.message)) }, 1000)
+      watchEvents()
       // Background sync
       if (hiddenMode && process.platform === 'darwin' && app.dock) app.dock.hide()
       setInterval(() => { try { keepHidden() } catch (e) {} }, 400)
@@ -1874,6 +2108,12 @@ try {
       setInterval(() => { try { backgroundWatchdog() } catch (e) { debug('Background error: ' + e.message) } }, 10 * 1000)
     })
     debug('Event handlers registered')
+
+    // Exodus just played (or wanted to play) its receive sound in this window – see soundHookJs
+    ipcMain.on('exodus-wallets:exodus-receive', (event) => {
+      if (!isTrustedSender(event)) return
+      try { exodusReceived() } catch (e) { debug('Incoming-payment error: ' + e.message) }
+    })
 
     for (const [name, fn] of Object.entries(api)) {
       ipcMain.handle('exodus-wallets:' + name, async (event, ...args) => {
@@ -1897,5 +2137,6 @@ module.exports = {
     api, buildState, snapshotBalance, checkHoldings, deliverReceived, rememberUi, tick, trackSetup, markSetup,
     lockAlive, iconFor, ensureBackground, backgroundWatchdog, enterHiddenMode, revealWindows, hideToBackground, keepHidden,
     isHidden: () => hiddenMode, live: () => liveStatus, setBooting: (on) => { booting = on },
+    exodusReceived, isCardTarget, updateFocus, soundHookJs,
   },
 }
