@@ -19,6 +19,7 @@ Exodus is an Electron app. Exodus Multi Wallet hooks in at two places:
 │  • launch Exodus with --datadir│                                   │  • menu, address view,    │
 │  • balance/address cache      │                                    │    dialogs                │
 │  • window titles, start wallet│                                    │  • calls main.js via IPC  │
+│  • incoming-payment detection │   exodus-wallets:received  ──────► │  • notification cards     │
 └──────────────────────────────┘                                    └───────────────────────────┘
 ```
 
@@ -68,6 +69,27 @@ refuse to patch while the app is open.
   `addressProvider.getReceiveAddress({ assetName, walletAccount })` per portfolio, excluding hardware
   portfolios (Ledger/Trezor). Interval: 5 min. Stored under `addresses`/`addressesAt`.
 
+### Incoming-payment notifications
+- **Detect (every window, for its own wallet):** every 4 s `HOLDINGS_JS` reads the coin amount per
+  portfolio and asset (`selectors.balances.getBalances(...).balance`) plus Exodus' own fiat value for it
+  (`selectors.fiatBalances.byAssetSource`). The last amounts are kept in memory only; an increase is a
+  payment.
+- **No false alarms:** the first read and the first 30 s after the UI is ready only set the baseline
+  (Exodus is still loading/syncing). A lower amount (a send, or an asset briefly missing while loading)
+  is only accepted once it has stayed lower for 20 s.
+- **Hand-over:** the receiving window first saves its balance (so the others can roll it), then writes
+  one JSON file per payment to `Exodus-Wallets/.eingaenge/` – wallet, asset, amount, fiat value at that
+  moment, currency, portfolio (only with several portfolios). If that window is in front, nothing is
+  written: Exodus shows its own notification there.
+- **Deliver (only the focused window):** every second the window in front (`BaseWindow.getFocusedWindow()`)
+  claims open events by creating `<id>.done` with the exclusive `wx` flag – whoever creates it shows the
+  card, so card and sound appear in exactly one window. Events of its own wallet are claimed silently.
+  It adds the coin icon as a `data:` URL, the wallet picture, the hide-balances setting and Exodus'
+  sound setting (`config` keys `sounds.all.enabled` / `sounds.all.volume`) and sends
+  `exodus-wallets:received`. Undelivered events expire after 10 min; old files are pruned.
+- **Only running wallets** (open in some window) are watched – a closed wallet has no process that
+  could read its balances.
+
 ### Language (i18n)
 - Follows `selectors.locale.language` (default `en`). Main-process strings: `MESSAGES` (en, de).
 - The sidebar has its own dictionary `TEXTS` in `preload.js` and switches at runtime when
@@ -116,6 +138,11 @@ refuse to patch while the app is open.
 - CSS is deliberately shielded against Exodus with `!important` and a maximal `z-index`.
 - All privileged actions go through `ipcRenderer.invoke('exodus-wallets:*')`; `main.js` checks the
   sender URL and session before doing anything.
+- **Notifications** (`XW.nt`): cards live in `.xw-nt-stack` inside `#xw-root`, below the backdrop and
+  the sidebar. `notify()` inserts the card and starts Exodus' own `media/audio/receive.wav` (loaded once,
+  the same file Exodus plays) in the same call. With the sidebar closed, unseen payments are counted on
+  the wallet button; opening it makes the affected rows glow and their balances roll (after the panel
+  stagger, 460 ms + 30 ms per row). Motion follows `#xw-root.xw-reduce` for reduced motion.
 
 ## Files in a wallet's data folder
 
@@ -127,18 +154,22 @@ refuse to patch while the app is open.
 | `wallet-switcher-restore` | marker: wallet should be set up from a 12-word phrase |
 
 Global, under `Exodus-Wallets`: `einstellungen.json` (settings incl. start wallet, default-wallet
-display name) and `importiert.log` (adopted old folders).
+display name), `importiert.log` (adopted old folders) and `.eingaenge/` (short-lived incoming-payment
+events and their `.done` claims, pruned after ~10 min).
 
 ## Adapting to a new Exodus version
 
 Checkpoints if something stops working:
 
 1. **Session name** of the UI (`persist:main` → folder `Partitions/main`).
-2. **Selectors** `selectors.fiatBalances/locale/walletAccounts/enabledAssets/assets`.
+2. **Selectors** `selectors.fiatBalances/locale/walletAccounts/enabledAssets/assets`, for
+   notifications also `selectors.fiatBalances.byAssetSource`, `selectors.balances.getBalances` and the
+   `config` keys `sounds.all.enabled` / `sounds.all.volume`.
 3. **Address API** via the React provider (`exodus.addressProvider.getReceiveAddress`).
 4. **Window type** of the main window (currently `BaseWindow`).
 5. **Icon path** `src/res/deps/img/<asset>-<hash>.svg`.
 6. **Backup route** `/settings/backup` for "show 12 words".
+7. **Receive sound** `src/static/media/audio/receive.wav` (page-relative `media/audio/receive.wav`).
 
 The debug log on the desktop (`exodus-wallets-debug.log`) shows which step fails.
 

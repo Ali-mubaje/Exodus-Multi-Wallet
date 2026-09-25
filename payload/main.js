@@ -11,6 +11,7 @@
  *  - baut KEINE Netzwerkverbindungen auf
  *  - liest nur die Fiat-Kontostände über Exodus' eigene Selektoren und speichert sie als Cache
  *    im Datenordner der jeweiligen Wallet (wallet-switcher-cache.json)
+ *  - erkennt Eingänge an steigenden Coin-Mengen und meldet sie dem gerade fokussierten Fenster
  */
 
 // BaseWindow gibt es erst ab Electron 30 – Exodus nutzt es für sein Hauptfenster
@@ -659,6 +660,61 @@ const ADDRESSES_JS = `(async () => {
 
 const ADDRESSES_EVERY_MS = 5 * 60 * 1000
 
+// Coin-Mengen pro Portfolio und Asset – daraus werden Eingänge erkannt (Menge gestiegen = Eingang).
+// Der Fiat-Wert kommt aus Exodus' eigener Umrechnung (fiatBalances.byAssetSource), also genau der
+// Wert, den Exodus selbst anzeigt. Nur lesen – keine Seeds, keine Schlüssel, kein Netzwerk.
+const HOLDINGS_JS = `(() => {
+  try {
+    const s = globalThis.selectors, store = globalThis.store
+    if (!s || !store || !s.fiatBalances || !s.balances) return { error: 'no-globals' }
+    const st = store.getState()
+    if (typeof s.fiatBalances.loaded === 'function' && !s.fiatBalances.loaded(st)) return { error: 'not-loaded' }
+    const num = (v) => {
+      if (v == null) return null
+      if (typeof v === 'number') return v
+      for (const m of ['toDefaultNumber', 'toNumber']) {
+        if (typeof v[m] === 'function') { const n = Number(v[m]()); if (isFinite(n)) return n }
+      }
+      const n = parseFloat(String(v.toDefaultString ? v.toDefaultString() : v).replace(/[^0-9.-]/g, ''))
+      return isFinite(n) ? n : null
+    }
+    const bySource = typeof s.fiatBalances.byAssetSource === 'function' ? s.fiatBalances.byAssetSource(st) : null
+    if (!bySource) return { error: 'no-byAssetSource' }
+    const getB = typeof s.balances.getBalances === 'function' ? s.balances.getBalances(st) : null
+    if (!getB) return { error: 'no-getBalances' }
+    const all = (s.assets && typeof s.assets.all === 'function' && s.assets.all(st)) || {}
+    let currency = null
+    try { currency = String(s.locale.currency(st)) } catch (e) {}
+    let properName = null
+    try { properName = s.walletAccounts.getProperName(st) } catch (e) {}
+    const accounts = Object.keys(bySource)
+    const holdings = []
+    for (const wa of accounts) {
+      const fiatByAsset = bySource[wa] || {}
+      for (const assetName of Object.keys(fiatByAsset)) {
+        const asset = all[assetName]
+        if (!asset) continue
+        let b = null
+        try { b = getB({ assetName, walletAccount: wa }) } catch (e) {}
+        const amount = num(b && (b.balance != null ? b.balance : b.total))
+        if (!amount || amount <= 0) continue
+        holdings.push({
+          asset: assetName,
+          ticker: String(asset.displayTicker || asset.ticker || assetName),
+          label: String(asset.displayName || asset.name || assetName),
+          account: wa,
+          portfolio: properName ? String(properName(wa, { maxLength: 40 })) : wa,
+          amount,
+          fiat: num(fiatByAsset[assetName]),
+        })
+      }
+    }
+    return { holdings, currency, portfolioCount: accounts.length }
+  } catch (e) {
+    return { error: String((e && e.message) || e) }
+  }
+})()`
+
 // Coin-Icons liefert Exodus selbst mit: src/res/deps/img/<asset>-<hash>.svg (z. B. bitcoin-c53be7.svg,
 // ach_ethereum_fbad19a6-02bb85.svg). Manche Coins haben zusätzlich ein kleines 18×18-Symbol unter
 // demselben Namen – wir nehmen das große 40×40-Sechseck, das Exodus in Listen zeigt.
@@ -688,6 +744,20 @@ function iconFor (assetName) {
   const name = String(assetName || '').toLowerCase()
   const file = index.get(name) || index.get(name.split('_')[0]) // Token auf anderer Chain → Icon des Coins
   return file ? '../res/deps/img/' + file : null
+}
+
+// Dasselbe Icon als data:-URL – für die Eingangs-Benachrichtigung, die nicht aus der Seite heraus lädt
+const iconData = new Map()
+function iconDataFor (assetName) {
+  const rel = iconFor(assetName)
+  if (!rel) return null
+  if (iconData.has(rel)) return iconData.get(rel)
+  let data = null
+  try {
+    data = 'data:image/svg+xml;base64,' + fs.readFileSync(path.join(app.getAppPath(), ...ICON_DIR, path.basename(rel))).toString('base64')
+  } catch (e) {}
+  iconData.set(rel, data)
+  return data
 }
 
 function updateCache (patch) {
@@ -758,8 +828,171 @@ async function snapshotAddresses (wc, force) {
   if (res.addresses.length) updateCache({ addresses: res.addresses, addressesAt: new Date().toISOString() })
 }
 
+// ---------------------------------------------------------------------------------------------
+// Eingänge („Geld eingegangen“): Jedes Fenster beobachtet die Coin-Mengen seiner eigenen Wallet. Steigt
+// eine, legt es ein Ereignis in Exodus-Wallets\.eingaenge ab. Gezeigt wird es nur vom gerade fokussierten
+// Fenster und nie von dem der empfangenden Wallet selbst – dort zeigt Exodus den Eingang ja selbst an.
+// ---------------------------------------------------------------------------------------------
+
+const HOLDINGS_EVERY_MS = 4000
+const RECEIVED_WARMUP_MS = 30 * 1000 // direkt nach dem Entsperren lädt und synchronisiert Exodus noch
+const RECEIVED_DROP_MS = 20 * 1000 // eine gesunkene Menge gilt erst, wenn sie so lange bleibt (kein Lade-Zwischenstand)
+const RECEIVED_KEEP_MS = 10 * 60 * 1000
+const eventsDir = () => path.join(profilesRoot(), '.eingaenge') // Punkt: taucht nicht als Wallet auf
+
+// Letzte Mengen pro "asset|portfolio" – nur im Speicher: das erste Einlesen ist der Ausgangsstand
+let holdingsBase = null
+let holdingsSince = 0
+let holdingsBusy = false
+const holdingsLow = new Map()
+
+const focusedHere = () => !!(BaseWindow && typeof BaseWindow.getFocusedWindow === 'function' && BaseWindow.getFocusedWindow())
+
+async function checkHoldings (wc) {
+  if (!wc || wc.isDestroyed() || holdingsBusy) return
+  holdingsBusy = true
+  try {
+    const res = await runInUi(wc, HOLDINGS_JS, 3000)
+    if (!res || res.error || !Array.isArray(res.holdings)) {
+      logStatus('Eingänge', 'kein Wert – ' + ((res && res.error) || 'leer'))
+      return
+    }
+    logStatus('Eingänge', 'ok')
+    const now = Date.now()
+    const cur = new Map(res.holdings.map((h) => [h.asset + '|' + h.account, h]))
+    const amounts = () => new Map([...cur].map(([k, h]) => [k, h.amount]))
+    if (!holdingsBase) holdingsSince = now
+    // Erstes Einlesen und Aufwärmphase: nur den Stand merken, nichts melden
+    if (!holdingsBase || now - holdingsSince < RECEIVED_WARMUP_MS) {
+      holdingsBase = amounts()
+      return
+    }
+    const tiny = (n) => Math.max(1e-12, n * 1e-9)
+    const received = []
+    for (const [k, h] of cur) {
+      const base = holdingsBase.get(k) || 0
+      if (h.amount > base + tiny(base)) {
+        holdingsBase.set(k, h.amount)
+        holdingsLow.delete(k)
+        received.push({ h, diff: h.amount - base })
+      }
+    }
+    for (const [k, base] of holdingsBase) {
+      const amount = cur.has(k) ? cur.get(k).amount : 0
+      if (amount >= base - tiny(base)) { holdingsLow.delete(k); continue }
+      const since = holdingsLow.get(k)
+      if (!since) { holdingsLow.set(k, now); continue }
+      if (now - since < RECEIVED_DROP_MS) continue
+      holdingsLow.delete(k)
+      if (amount > 0) holdingsBase.set(k, amount)
+      else holdingsBase.delete(k)
+    }
+    if (!received.length) return
+    // Kontostand sofort speichern: die anderen Fenster lesen ihn, sobald sie die Karte zeigen, und lassen den Saldo rollen
+    await snapshotBalance(wc)
+    // Dieses Fenster ist vorne? Dann zeigt Exodus den Eingang selbst – kein zweites Fenster soll ihn noch melden
+    if (focusedHere()) { debug(`Eingang erkannt (${currentWalletLabel()}), Fenster ist vorne – Exodus zeigt ihn selbst`); return }
+    const me = walletDirs().find((x) => isCurrent(x.dir))
+    fs.mkdirSync(eventsDir(), { recursive: true })
+    for (const { h, diff } of received) {
+      const price = h.fiat != null && h.amount > 0 ? h.fiat / h.amount : null
+      const ev = {
+        id: now.toString(36) + '-' + crypto.randomBytes(4).toString('hex'),
+        at: now,
+        dir: currentDir(),
+        walletId: me && !me.external ? me.id : null,
+        wallet: currentWalletLabel(),
+        asset: h.asset,
+        ticker: h.ticker,
+        coin: h.label,
+        amount: diff,
+        value: price != null ? diff * price : null, // Fiat-Wert zum Zeitpunkt des Eingangs
+        currency: res.currency || uiCurrency || null,
+        portfolio: res.portfolioCount > 1 ? h.portfolio : null,
+      }
+      writeJson(path.join(eventsDir(), ev.id + '.json'), ev)
+      debug(`Eingang erkannt: ${ev.wallet} – ${ev.ticker}`)
+    }
+  } catch (e) {
+    debug('Eingangs-Fehler: ' + e.message)
+  } finally {
+    holdingsBusy = false
+  }
+}
+
+// Exodus' eigene Ton-Einstellung dieses Fensters (Einstellungen → Töne): Exodus spielt receive.wav nur,
+// wenn "sounds.all.enabled" an ist, und mit der Lautstärke "sounds.all.volume" – genauso machen wir es
+const SOUND_JS = `(() => {
+  try {
+    const c = globalThis.store && globalThis.store.getState().config
+    if (!c || typeof c.get !== 'function') return { on: true, volume: 1 }
+    const v = Number(c.get('sounds.all.volume'))
+    return { on: !!c.get('sounds.all.enabled'), volume: isFinite(v) ? Math.min(1, Math.max(0, v)) : 1 }
+  } catch (e) {
+    return { on: true, volume: 1 }
+  }
+})()`
+
+// Läuft in jedem Fenster jede Sekunde, tut aber nur etwas, solange dieses Fenster vorne ist
+let lastPrune = 0
+let delivering = false
+async function deliverReceived () {
+  const wc = uiContents
+  if (delivering || !wc || wc.isDestroyed() || !focusedHere()) return
+  let files = []
+  try { files = fs.readdirSync(eventsDir()) } catch (e) { return }
+  delivering = true
+  try {
+    const now = Date.now()
+    const open = []
+    for (const f of files) {
+      if (!f.endsWith('.json')) continue
+      const file = path.join(eventsDir(), f)
+      const done = file.slice(0, -5) + '.done'
+      if (exists(done)) continue
+      const ev = readJson(file)
+      if (!ev || typeof ev.at !== 'number' || !ev.dir || now - ev.at > RECEIVED_KEEP_MS) continue
+      open.push({ ev, done })
+    }
+    // Älteste zuerst – die neueste liegt dann oben im Stapel
+    open.sort((a, b) => a.ev.at - b.ev.at)
+    let sound = null
+    for (const { ev, done } of open) {
+      // Wer die .done-Datei anlegt, zeigt den Eingang: Karte und Ton kommen so nur in einem Fenster
+      try { fs.closeSync(fs.openSync(done, 'wx')) } catch (e) { continue }
+      // Die eigene Wallet: Exodus hat ihn in diesem Fenster schon selbst gezeigt – nur als erledigt markieren
+      if (isCurrent(ev.dir)) continue
+      if (!sound) sound = await runInUi(wc, SOUND_JS, 1000)
+      if (!sound || sound.error) sound = { on: true, volume: 1 }
+      const w = walletDirs().find((x) => norm(x.dir) === norm(ev.dir))
+      if (wc.isDestroyed()) return
+      wc.send('exodus-wallets:received', {
+        ...ev,
+        walletId: w && !w.external ? w.id : ev.walletId,
+        wallet: w ? (w.isStandard ? standardLabel() : w.name) : ev.wallet,
+        avatar: avatarFor(ev.dir),
+        icon: iconDataFor(ev.asset),
+        hidden: !!readSettings().hideBalances,
+        language: uiLanguage,
+        sound,
+      })
+    }
+  } finally {
+    delivering = false
+  }
+  if (Date.now() - lastPrune > 60 * 1000) {
+    const now = Date.now()
+    lastPrune = now
+    for (const f of files) {
+      const file = path.join(eventsDir(), f)
+      try { if (now - fs.statSync(file).mtimeMs > RECEIVED_KEEP_MS + 60 * 1000) fs.unlinkSync(file) } catch (e) {}
+    }
+  }
+}
+
 let uiContents = null
 let snapshotTimer = null
+let holdingsTimer = null
 function rememberUi (wc) {
   if (uiContents === wc) return
   uiContents = wc
@@ -772,6 +1005,9 @@ function rememberUi (wc) {
       if (ok) snapshotAddresses(uiContents, false)
     }, SNAPSHOT_EVERY_MS)
   }
+  if (!holdingsTimer) holdingsTimer = setInterval(() => checkHoldings(uiContents), HOLDINGS_EVERY_MS)
+  // Neue Oberfläche (z. B. nach Neuladen): Ausgangsstand neu einlesen
+  holdingsBase = null
   snapshotBalance(wc)
 }
 
@@ -1149,6 +1385,7 @@ try {
     app.whenReady().then(() => {
       setInterval(() => { try { refreshWindowTitles() } catch (e) { debug('Fenstertitel-Fehler: ' + e.message) } }, 1500)
       setInterval(() => { checkCommands().catch((e) => debug('Befehl-Fehler: ' + e.message)) }, 1000)
+      setInterval(() => { deliverReceived().catch((e) => debug('Eingangs-Fehler: ' + e.message)) }, 1000)
     })
     debug('Event-Handler registriert')
 
@@ -1168,4 +1405,4 @@ try {
   console.error(TAG, 'Seitenleiste konnte nicht geladen werden:', e)
 }
 
-module.exports = { VERSION, _test: { api, buildState, snapshotBalance } }
+module.exports = { VERSION, _test: { api, buildState, snapshotBalance, checkHoldings, deliverReceived, rememberUi } }

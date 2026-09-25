@@ -30,6 +30,14 @@ work but not yet tested against a specific version.
   subtotals (e.g. `$12,330.19 + £150.14`; no online exchange-rate conversion).
 - **Balances without opening** – every running window saves its last fiat balance every 20 s, so the
   sidebar shows the balances of all wallets.
+- **Incoming-payment notifications** – when another running wallet (open in a different window)
+  receives funds, the window you're working in shows a small card at the top left: coin (with the
+  original Exodus icon), amount, value at the time it arrived, wallet and portfolio – and plays Exodus'
+  own receive sound. Click the card to jump to that wallet. With the sidebar closed, a green dot/counter
+  on the wallet button marks unseen payments; opening the sidebar makes the wallet's row glow and its
+  balance roll up. Payments to the wallet of the current window are left to Exodus' own notification,
+  and only the window in front shows the card, so the sound never plays twice. Hidden balances hide the
+  amount here too.
 - **Copy addresses without opening** – receive addresses for all coins, with a coin search and
   **portfolio tabs**; with several portfolios you copy the address of the right one.
 - **Bulk export** – *Export addresses …* lets you multi-select portfolios (and optionally filter by
@@ -50,6 +58,11 @@ work but not yet tested against a specific version.
 | Action menu | Copy addresses | Delete wallet |
 |:---:|:---:|:---:|
 | ![Menu](docs/images/menu.png) | ![Addresses](docs/images/addresses.png) | ![Delete](docs/images/delete.png) |
+
+<p align="center">
+  <img src="docs/images/notification.png" width="396" alt="Incoming-payment notification at the top left, with an unseen-payments counter on the wallet button">
+  <br><em>Incoming payment on another wallet – with the counter for unseen payments on the wallet button</em>
+</p>
 
 *(The images show sample data in a test environment.)*
 
@@ -183,8 +196,8 @@ Windows-only conveniences that simply don't appear elsewhere:
   ```sh
   xattr -r /Applications/Exodus.app | grep quarantine
   ```
-- Everything else – switching, balances, addresses, rename, delete, start wallet, custom pictures –
-  works on all platforms.
+- Everything else – switching, balances, notifications, addresses, rename, delete, start wallet,
+  custom pictures – works on all platforms.
 
 Tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** (the latest on each at the time).
 **Linux** has not been tested against a specific version yet; the installer detects the version and
@@ -212,6 +225,8 @@ these.
   connections**.
 - Via Exodus' own selectors it only reads fiat balances and public receive addresses and caches them
   in each wallet's data folder.
+- For notifications it reads each running wallet's coin amounts per portfolio (read-only) and passes
+  detected payments between windows through small local files; nothing leaves the computer.
 - “Show 12 words” only opens Exodus' own backup screen – Exodus handles the password prompt.
 - Delete means **trash/recycle bin**, never a hard delete. If moving to the bin fails, nothing happens.
 - Actions only accept calls from the real Exodus UI (verified origin and session).
@@ -228,8 +243,8 @@ Exodus is an Electron app. The installer unpacks `app.asar`, appends **one line*
 stays byte for byte identical; the original is kept as `app.asar.orig`.
 
 - **`payload/main.js`** – runs in the main process: manages the data folders, launches Exodus with the
-  official `--datadir` flag, caches balances and addresses, sets window titles and answers the
-  sidebar's IPC calls.
+  official `--datadir` flag, caches balances and addresses, detects incoming payments, sets window
+  titles and answers the sidebar's IPC calls.
 - **`payload/preload.js`** – runs as an extra preload script in the Exodus UI (its own isolated world)
   and builds the sidebar as DOM. All actions go through IPC to `main.js`.
 - **`install.js`** – reads and writes the asar format itself (including integrity hashes), verifies the

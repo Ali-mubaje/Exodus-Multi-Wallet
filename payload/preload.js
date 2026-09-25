@@ -454,6 +454,112 @@
 #xw-root .xw-toast-ico{display:flex;flex:none}
 /* Formular-Einblendung ohne Versatz bei weniger Bewegung */
 #xw-root.xw-reduce form:not(.xw-hide){animation-name:xw-fade}
+
+/* ===== @xw:notify ===== */
+/* „Geld eingegangen“ – Benachrichtigung, Stapel, Nav-Punkt, Nachwirkung in der Seitenleiste.
+   Nutzt die Motion-Tokens aus @xw:tokens (--xw-ease-out/-in/-io/-back). Selbstständig: keine Keyframes aus anderen Abschnitten nötig.
+   Stapel: <div class="xw-nt-stack is-deck"> (oder is-list) direkt in #xw-root. Karten erzeugt XW.nt.notify(). */
+
+#xw-root .xw-nt-stack{position:fixed;top:92px;left:24px;width:320px;z-index:2147483645;pointer-events:none}
+/* Slot = Position im Stapel (nur transform), Karte = Ein-/Ausblenden */
+#xw-root .xw-nt{position:absolute;top:0;left:0;right:0;padding-bottom:8px;pointer-events:auto;transform-origin:50% 100%;transform:translateY(var(--xw-yl,0px));transition:transform 320ms var(--xw-ease-out),opacity 200ms var(--xw-ease-out)}
+#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt{transform:translateY(var(--xw-yd,0px)) scale(var(--xw-sd,1));transition-duration:260ms,200ms}
+#xw-root .xw-nt.is-hidden{opacity:0;pointer-events:none}
+#xw-root .xw-nt.is-gone{pointer-events:none}
+
+#xw-root .xw-nt-card{position:relative;overflow:hidden;padding:12px 12px 10px 16px;border-radius:8px;background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 32px rgba(0,0,0,.5);cursor:pointer;outline:0;transition:background 200ms var(--xw-ease-out),filter 200ms var(--xw-ease-out)}
+#xw-root .xw-nt-card:is(:hover,.is-hover){background:var(--xw-hover)}
+#xw-root .xw-nt-card:focus-visible{box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 0 1px var(--xw-cyan)}
+#xw-root .xw-nt-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--xw-green)}
+#xw-root .xw-nt-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:rgba(255,255,255,.18);transform-origin:left;animation:xw-nt-life var(--xw-nt-life,6000ms) linear both}
+#xw-root .xw-nt-stack.is-paused .xw-nt-card:after,#xw-root .xw-nt.is-static .xw-nt-card:after{animation-play-state:paused}
+#xw-root .xw-nt.is-static .xw-nt-card:after{animation-delay:calc(var(--xw-nt-life,6000ms) * -.42)}
+#xw-root .xw-nt-main{display:flex;align-items:center;gap:12px}
+#xw-root .xw-nt-coin{flex:none;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:var(--xw-font-cond);font-size:10px;font-weight:700;letter-spacing:.04em;color:#fff}
+#xw-root .xw-nt-coin img{display:block;width:40px;height:40px;object-fit:contain}
+#xw-root .xw-nt-coin:not(:has(img)){clip-path:polygon(50% 0,93.3% 25%,93.3% 75%,50% 100%,6.7% 75%,6.7% 25%)}
+#xw-root .xw-nt-body{flex:1;min-width:0}
+#xw-root .xw-nt-amt{display:grid;overflow:hidden}
+#xw-root .xw-nt-amt>span{grid-area:1/1;font-size:20px;font-weight:300;line-height:1.25;letter-spacing:-.005em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#xw-root .xw-nt.is-private .xw-nt-amt>span{font-size:16px;font-weight:400}
+#xw-root .xw-nt-sub{margin-top:1px;font-size:12px;color:var(--xw-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+#xw-root .xw-nt-x{flex:none;align-self:flex-start;width:28px;height:28px;margin:-4px -4px 0 0;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;opacity:.35;cursor:pointer;transition:opacity .1s,background .2s,transform 240ms var(--xw-ease-back)}
+#xw-root .xw-nt-card:is(:hover,.is-hover) .xw-nt-x{opacity:.6}
+#xw-root .xw-nt-x:hover{opacity:1!important;background:rgba(255,255,255,.07)}
+#xw-root .xw-nt-x:active{transform:scale(.9);transition-duration:.1s,.2s,90ms}
+#xw-root .xw-nt-foot{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--xw-line);font-size:11.5px;color:var(--xw-muted);white-space:nowrap}
+#xw-root .xw-nt-av{flex:none;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--xw-deep) center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);font-family:var(--xw-font-cond);font-size:9px;font-weight:700;color:#fff}
+#xw-root .xw-nt-wallet{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:rgba(255,255,255,.82)}
+#xw-root .xw-nt-port{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#xw-root .xw-nt-time{flex:none;margin-left:auto}
+#xw-root .xw-nt-glint{position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 30%,rgba(58,210,159,.14) 45%,rgba(255,255,255,.09) 50%,rgba(58,210,159,.14) 55%,transparent 70%);transform:translateX(-100%);opacity:0}
+
+/* Deck: ältere Karten zeigen nur die Kante; Hover (= .is-paused) fächert zur Liste auf */
+#xw-root .xw-nt-main,#xw-root .xw-nt-foot{transition:opacity 150ms var(--xw-ease-out)}
+#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-main,#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-foot{opacity:0}
+#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-card{filter:brightness(.8)}
+
+/* „+N more“ */
+#xw-root .xw-nt-more{position:absolute;top:0;left:0;display:flex;align-items:center;height:24px;padding:0 10px;border-radius:12px;font-size:11.5px;font-weight:500;color:rgba(255,255,255,.82);background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 8px 20px rgba(0,0,0,.4);pointer-events:auto;opacity:0;transform:translateY(calc(var(--xw-yl,0px) - 4px));transition:opacity 150ms var(--xw-ease-in),transform 320ms var(--xw-ease-out)}
+#xw-root .xw-nt-more.is-show{opacity:1;transform:translateY(var(--xw-yl,0px));transition:opacity 200ms var(--xw-ease-out),transform 320ms var(--xw-ease-out)}
+#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt-more.is-show{transform:translateY(var(--xw-yd,0px));transition-duration:200ms,260ms}
+
+/* Eingang – Akzent synchron zum Sound (t = 0: Karte eingefügt + receive.wav gestartet) */
+#xw-root .xw-nt.is-new .xw-nt-card{animation:xw-nt-in 280ms var(--xw-ease-out) both}
+#xw-root .xw-nt.is-new .xw-nt-card:before{animation:xw-nt-bar 260ms var(--xw-ease-out) 60ms both}
+#xw-root .xw-nt.is-new .xw-nt-coin{animation:xw-nt-pop 420ms var(--xw-ease-back) 40ms both}
+#xw-root .xw-nt.is-new .xw-nt-amt>span{animation:xw-nt-amt 320ms var(--xw-ease-out) 100ms both,xw-nt-tint 1200ms var(--xw-ease-out) 100ms both}
+#xw-root .xw-nt.is-new .xw-nt-glint{animation:xw-nt-glint 800ms var(--xw-ease-io) 120ms both}
+/* Ausblenden: ✕ nach links, Klick (öffnen) zieht zusammen, automatisch nach oben */
+#xw-root .xw-nt.is-out-x .xw-nt-card{animation:xw-nt-out-x 180ms var(--xw-ease-in) both}
+#xw-root .xw-nt.is-out-open .xw-nt-card{animation:xw-nt-out-open 160ms var(--xw-ease-in) both}
+#xw-root .xw-nt.is-out-auto .xw-nt-card{animation:xw-nt-out-auto 220ms var(--xw-ease-in) both}
+
+@keyframes xw-nt-in{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes xw-nt-bar{from{transform:scaleY(0)}to{transform:none}}
+@keyframes xw-nt-pop{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
+@keyframes xw-nt-amt{from{opacity:0;transform:translateY(45%);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+@keyframes xw-nt-tint{from{color:var(--xw-green)}to{color:var(--xw-text)}}
+@keyframes xw-nt-glint{0%{opacity:0;transform:translateX(-100%)}15%{opacity:1}85%{opacity:1}100%{opacity:0;transform:translateX(100%)}}
+@keyframes xw-nt-life{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes xw-nt-out-x{to{opacity:0;transform:translateX(-12px)}}
+@keyframes xw-nt-out-open{to{opacity:0;transform:scale(.97)}}
+@keyframes xw-nt-out-auto{to{opacity:0;transform:translateY(-6px)}}
+@keyframes xw-nt-fade{from{opacity:0}}
+@keyframes xw-nt-fade-out{to{opacity:0}}
+
+/* Nav-Punkt am Wallet-Knopf (#xw-toggle): unten rechts, damit die vorhandene .xw-count (Wallet-Anzahl, oben rechts) frei bleibt */
+#xw-root .xw-nt-badge{position:absolute;right:1px;bottom:3px;width:10px;height:10px;border-radius:5px;background:var(--xw-green);box-shadow:0 0 0 2px #0c0e0f;font-family:var(--xw-font-cond);font-size:0;font-weight:700;line-height:14px;text-align:center;color:#06140e;pointer-events:none;opacity:0;transform:scale(.3);transition:opacity 150ms var(--xw-ease-in),transform 150ms var(--xw-ease-in)}
+#xw-root .xw-nt-badge.is-on{opacity:1;transform:none;transition:opacity 200ms var(--xw-ease-out),transform 320ms var(--xw-ease-back)}
+#xw-root .xw-nt-badge.is-count{width:auto;min-width:14px;height:14px;padding:0 3px;border-radius:7px;right:-2px;bottom:1px;font-size:9.5px}
+#xw-root .xw-nt-badge:after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--xw-green);opacity:0}
+#xw-root .xw-nt-badge.is-pulse:after{animation:xw-nt-ring 700ms var(--xw-ease-out) 120ms both}
+#xw-root .xw-nt-badge.is-bump{animation:xw-nt-bump 240ms var(--xw-ease-back)}
+@keyframes xw-nt-ring{from{opacity:.5;transform:scale(1)}to{opacity:0;transform:scale(2.6)}}
+@keyframes xw-nt-bump{from{transform:scale(1.3)}to{transform:none}}
+
+/* Nachwirkung: Wallet-Zeile glimmt einmal grün, gleichzeitig rollt der Saldo (@xw:roll, is-up) */
+#xw-root .xw-item:after{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(58,210,159,.08);box-shadow:inset 0 0 0 1px rgba(58,210,159,.2);opacity:0;pointer-events:none}
+#xw-root .xw-item.is-received:after{animation:xw-nt-wash 1300ms var(--xw-ease-out) var(--xw-rcv-delay,0ms)}
+@keyframes xw-nt-wash{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+
+/* Reduced Motion: nur Überblendungen; Grün (Balken, Tönung, Punkt, Zeile) bleibt */
+#xw-root.xw-reduce .xw-nt,#xw-root.xw-reduce .xw-nt-more{transition:opacity 200ms ease!important}
+#xw-root.xw-reduce .xw-nt.is-new .xw-nt-card{animation:xw-nt-fade 200ms ease both}
+#xw-root.xw-reduce .xw-nt.is-new .xw-nt-card:before,#xw-root.xw-reduce .xw-nt.is-new .xw-nt-coin,#xw-root.xw-reduce .xw-nt.is-new .xw-nt-glint{animation:none}
+#xw-root.xw-reduce .xw-nt.is-new .xw-nt-amt>span{animation:xw-nt-tint 1200ms ease-out both}
+#xw-root.xw-reduce .xw-nt[class*="is-out-"] .xw-nt-card{animation:xw-nt-fade-out 160ms ease both}
+#xw-root.xw-reduce .xw-nt-card:after{display:none}
+#xw-root.xw-reduce .xw-nt-badge,#xw-root.xw-reduce .xw-nt-badge.is-on{transform:none!important;transition:opacity 200ms ease}
+#xw-root.xw-reduce .xw-nt-badge.is-pulse:after,#xw-root.xw-reduce .xw-nt-badge.is-bump{animation:none}
+
+/* ----- Ergänzungen für @xw:notify (nicht Teil des Handoffs) ----- */
+/* Wallet ohne eigenes Bild: Exodus-Logo im 18-px-Kreis so klein wie in der Wallet-Zeile (20 von 36 px) */
+#xw-root .xw-nt-av.is-exodus{background-size:10px 10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+/* Saldo-Roll beim Öffnen der Leiste: startet zusammen mit dem Glimmen der Zeile (460 ms + 30 ms × Zeile) */
+#xw-root .xw-roll.is-delayed>.xw-roll-out{animation-delay:var(--xw-roll-d,0ms)!important}
+#xw-root .xw-roll.is-delayed>.xw-roll-in{animation-delay:calc(var(--xw-roll-d,0ms) + 60ms)!important}
+#xw-root.xw-reduce .xw-roll.is-delayed>.xw-roll-in{animation-delay:var(--xw-roll-d,0ms)!important}
 `
 
   // -------------------------------------------------------------------------------------------
@@ -582,6 +688,10 @@
       deleteCloseOk: 'Close & move to Recycle Bin',
       deleteBackupFirst: 'Show 12 words first',
       deleteDone: (n) => `${n} was moved to the Recycle Bin.`,
+      ntMore: (n) => `+${n} more`,
+      ntReceived: (ticker) => `Received ${ticker}`,
+      ntDismiss: 'Dismiss',
+      ntOpen: 'Open wallet',
     },
     de: {
       q: (s) => `„${s}“`,
@@ -703,6 +813,10 @@
       deleteCloseOk: 'Schließen & in den Papierkorb',
       deleteBackupFirst: 'Zuerst 12 Wörter anzeigen',
       deleteDone: (n) => `${n} liegt jetzt im Papierkorb.`,
+      ntMore: (n) => `+${n} weitere`,
+      ntReceived: (ticker) => `${ticker} erhalten`,
+      ntDismiss: 'Schließen',
+      ntOpen: 'Wallet öffnen',
     },
   }
 
@@ -780,6 +894,142 @@
       }
     },
   }
+
+  // „Geld eingegangen“ aus design_handoff_notify/xw-notify.js – als XW.nt im selben Scope. Die Texte
+  // kommen aus TEXTS (folgen also der Exodus-Sprache), das ✕ ist ICON.close.
+  XW.nt = (() => {
+    const texts = () => ({ more: T.ntMore, received: T.ntReceived, now: T.justNow, dismiss: T.ntDismiss, open: T.ntOpen })
+    const SKEL = '<div class="xw-nt-card" role="button" tabindex="0"><i class="xw-nt-glint" aria-hidden="true"></i>' +
+      '<div class="xw-nt-main"><span class="xw-nt-coin"></span><div class="xw-nt-body"><div class="xw-nt-amt"><span></span></div><div class="xw-nt-sub"></div></div>' +
+      '<button class="xw-nt-x" type="button">' + ICON.close(14) + '</button></div>' +
+      '<div class="xw-nt-foot"><span class="xw-nt-av"></span><span class="xw-nt-wallet"></span><span class="xw-nt-port"></span><span class="xw-nt-time"></span></div></div>'
+    const GAP = 8, MAX = 3, DECK_STEP = 8, DECK_SCALE = 0.04
+
+    const NT = {
+      life: 6000,
+      /* d = { wallet:{name, img?, initial?, color?}, coin:{name, ticker, icon?, color?},
+               amount:'+0.0012 BTC', value?:'≈ $78.40', portfolio?, time?, hidden?:bool }
+         o = { life?, sound?: HTMLAudioElement, onOpen?(d), static?:bool } */
+      notify (stack, d, o = {}) {
+        const t = texts()
+        const life = o.life || NT.life
+        const s = document.createElement('div')
+        s.className = 'xw-nt'
+        s.setAttribute('role', 'status')
+        s.innerHTML = SKEL
+        const q = c => s.querySelector(c)
+        const coin = q('.xw-nt-coin')
+        if (d.coin.icon) { const img = new Image(); img.src = d.coin.icon; img.alt = ''; coin.appendChild(img) }
+        else { coin.textContent = d.coin.ticker; if (d.coin.color) coin.style.background = d.coin.color }
+        const priv = !!d.hidden
+        s.classList.toggle('is-private', priv)
+        q('.xw-nt-amt span').textContent = priv ? t.received(d.coin.ticker) : d.amount
+        q('.xw-nt-sub').textContent = priv || !d.value ? d.coin.name : d.value + ' · ' + d.coin.name
+        const av = q('.xw-nt-av')
+        if (d.wallet.img) av.style.backgroundImage = 'url("' + d.wallet.img + '")'
+        else { av.textContent = d.wallet.initial || d.wallet.name.slice(0, 1); if (d.wallet.color) av.style.backgroundColor = d.wallet.color }
+        q('.xw-nt-wallet').textContent = d.wallet.name
+        q('.xw-nt-port').textContent = d.portfolio ? '· ' + d.portfolio : ''
+        q('.xw-nt-time').textContent = d.time || t.now
+        q('.xw-nt-x').setAttribute('aria-label', t.dismiss)
+        q('.xw-nt-card').setAttribute('aria-label', t.open + ': ' + d.wallet.name)
+        s.style.setProperty('--xw-nt-life', life + 'ms')
+        s._left = life
+
+        if (o.static) s.classList.add('is-static')
+        else {
+          s.classList.add('is-new')
+          q('.xw-nt-x').addEventListener('click', e => { e.stopPropagation(); NT.dismiss(s, 'x') })
+          const open = () => { if (o.onOpen) o.onOpen(d); NT.dismiss(s, 'open') }
+          q('.xw-nt-card').addEventListener('click', open)
+          q('.xw-nt-card').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } })
+        }
+        if (!stack._xwBound && !o.static) {
+          stack._xwBound = true
+          stack.addEventListener('mouseenter', () => NT.pause(stack, true))
+          stack.addEventListener('mouseleave', () => NT.pause(stack, false))
+          stack.addEventListener('focusin', () => NT.pause(stack, true))
+          stack.addEventListener('focusout', e => { if (!stack.contains(e.relatedTarget)) NT.pause(stack, false) })
+        }
+        stack._xwT = t
+        if (o.sound) { try { o.sound.currentTime = 0; const p = o.sound.play(); if (p) p.catch(() => {}) } catch (e) {} }
+        stack.insertBefore(s, stack.firstChild)
+        if (!o.static) NT._arm(stack, s)
+        NT.layout(stack)
+        return s
+      },
+      _arm (stack, s) {
+        if (stack.classList.contains('is-paused') || s._gone) return
+        clearTimeout(s._timer)
+        s._t0 = performance.now()
+        s._timer = setTimeout(() => NT.dismiss(s, 'auto'), Math.max(0, s._left))
+      },
+      pause (stack, on) {
+        stack.classList.toggle('is-paused', on)
+        stack.querySelectorAll('.xw-nt:not(.is-gone):not(.is-static)').forEach(s => {
+          if (on) { clearTimeout(s._timer); if (s._t0 != null) { s._left -= performance.now() - s._t0; s._t0 = null } }
+          else NT._arm(stack, s)
+        })
+      },
+      dismiss (s, how = 'auto') {
+        if (s._gone) return
+        s._gone = true
+        clearTimeout(s._timer)
+        const stack = s.parentElement
+        s.classList.add('is-gone', 'is-out-' + how)
+        const card = s.firstElementChild
+        let done = false
+        const rm = () => { if (!done) { done = true; s.remove() } }
+        card.addEventListener('animationend', e => { if (e.target === card && e.animationName.indexOf('out') > -1) rm() })
+        setTimeout(rm, 1200)
+        if (stack) NT.layout(stack)
+      },
+      clear (stack) { stack.querySelectorAll('.xw-nt:not(.is-gone)').forEach(s => NT.dismiss(s, 'auto')) },
+      layout (stack) {
+        const slots = [...stack.querySelectorAll('.xw-nt:not(.is-gone)')]
+        let y = 0, h0 = 0
+        slots.forEach((s, i) => {
+          const h = s.firstElementChild.offsetHeight
+          if (i === 0) h0 = h
+          const d = Math.min(i, MAX - 1)
+          s.style.setProperty('--xw-yl', y + 'px')
+          s.style.setProperty('--xw-yd', (h0 - h + d * DECK_STEP) + 'px')
+          s.style.setProperty('--xw-sd', String(1 - d * DECK_SCALE))
+          s.style.zIndex = String(100 - i)
+          s.classList.toggle('is-back', i > 0)
+          s.classList.toggle('is-hidden', i >= MAX)
+          if (i < MAX) y += h + GAP
+        })
+        let more = stack.querySelector('.xw-nt-more')
+        if (!more) { more = document.createElement('div'); more.className = 'xw-nt-more'; stack.appendChild(more) }
+        const n = slots.length - MAX
+        if (n > 0) more.textContent = (stack._xwT || texts()).more(n)
+        more.style.setProperty('--xw-yl', y + 'px')
+        more.style.setProperty('--xw-yd', (h0 + Math.min(slots.length - 1, MAX - 1) * DECK_STEP + GAP) + 'px')
+        more.classList.toggle('is-show', n > 0)
+      },
+      /* Punkt/Zähler am Wallet-Knopf: n = ungesehene Eingänge; 0 beim Öffnen der Leiste */
+      badge (toggle, n) {
+        let b = toggle.querySelector('.xw-nt-badge')
+        if (!b) { b = document.createElement('span'); b.className = 'xw-nt-badge'; b.setAttribute('aria-hidden', 'true'); toggle.appendChild(b) }
+        const was = +(b.dataset.n || 0)
+        b.dataset.n = String(n)
+        if (n > 1) b.textContent = n > 9 ? '9+' : String(n)
+        b.classList.toggle('is-count', n > 1)
+        if (n > 0 && was === 0) { b.classList.add('is-on'); XW.replay(b, 'is-pulse') }
+        else if (n > was) XW.replay(b, 'is-bump')
+        if (n === 0) b.classList.remove('is-on', 'is-pulse', 'is-bump')
+      },
+      /* Wallet-Zeile kurz grün aufglimmen lassen (delay: z. B. 460 ms, wenn die Leiste gerade aufgeht) */
+      markWallet (item, delay = 0) {
+        item.style.setProperty('--xw-rcv-delay', delay + 'ms')
+        XW.replay(item, 'is-received')
+        clearTimeout(item._xwRcv)
+        item._xwRcv = setTimeout(() => item.classList.remove('is-received'), delay + 1400)
+      },
+    }
+    return NT
+  })()
 
   // Währung kommt pro Wallet aus deren Exodus-Einstellung (USD, EUR, …), das Zahlenformat aus der Sprache
   function money (value, currency) {
@@ -945,7 +1195,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       else closePanel()
     }, true)
 
-    const root = el('div', { id: 'xw-root' }, toggle, el('div', { id: 'xw-backdrop', onclick: () => closePanel() }), panel)
+    // Stapel für „Geld eingegangen“ (@xw:notify): oben links unter der Navigation, unter Backdrop und Leiste
+    const ntStack = el('div', { class: 'xw-nt-stack is-deck' })
+    // Ungesehene Eingänge bei geschlossener Leiste: Zähler am Knopf und die betroffenen Wallets (IDs)
+    let unseen = 0
+    const pending = new Set()
+    const root = el('div', { id: 'xw-root' }, toggle, ntStack, el('div', { id: 'xw-backdrop', onclick: () => closePanel() }), panel)
     document.body.appendChild(root)
     XW.syncReduce(root) // „weniger Bewegung“ als Klasse .xw-reduce spiegeln
     applyTexts()
@@ -1006,7 +1261,27 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       root.classList.add('xw-open')
       toggle.setAttribute('aria-expanded', 'true')
       if (!state) list.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
-      refresh()
+      // Eingänge bei geschlossener Leiste: Punkt weg; die Zeile glimmt und der Saldo rollt, sobald Panel und
+      // Stagger durch sind (460 ms + 30 ms × Zeile) – beides mit demselben Startzeitpunkt
+      const marks = new Map()
+      if (pending.size) {
+        const t0 = performance.now()
+        for (const id of pending) {
+          const i = state ? Math.max(0, state.wallets.findIndex((w) => w.id === id)) : 0
+          marks.set(id, t0 + 460 + i * 30)
+          rollAt.set('w:' + id, t0 + 460 + i * 30)
+        }
+        rollAt.set('sum', t0 + 460)
+        pending.clear()
+      }
+      unseen = 0
+      XW.nt.badge(toggle, 0)
+      refresh().then(() => {
+        for (const [id, at] of marks) {
+          const item = itemFor(id)
+          if (item) XW.nt.markWallet(item, Math.max(0, Math.round(at - performance.now())))
+        }
+      })
       clearInterval(refreshTimer)
       refreshTimer = setInterval(refresh, 15000)
       setTimeout(() => panel.focus(), 60)
@@ -1043,14 +1318,16 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
     const fail = (e) => showNotice(e.message, 'error')
 
+    function applyLanguage (lang) {
+      if ((lang || 'en') === language) return
+      setLanguage(lang || 'en')
+      applyTexts()
+      if (!form.classList.contains('xw-hide')) hideForm() // offenes Formular trüge noch die alte Sprache
+    }
+
     function render () {
       if (!state) return
-      const lang = (state.locale && state.locale.language) || 'en'
-      if (lang !== language) {
-        setLanguage(lang)
-        applyTexts()
-        if (!form.classList.contains('xw-hide')) hideForm() // offenes Formular trüge noch die alte Sprache
-      }
+      applyLanguage(state.locale && state.locale.language)
       const hide = !!state.settings.hideBalances
       eyeBtn.innerHTML = hide ? ICON.eyeOff(18) : ICON.eye(18)
       eyeBtn.title = hide ? T.showBalances : T.hideBalances
@@ -1068,11 +1345,21 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     // Saldo in .xw-roll verpacken (@xw:roll). Hat sich der Wert seit dem letzten Zeichnen geändert, rollt der
     // alte Wert raus und der neue rein – Richtung nach der Zahl. Beim ersten Zeichnen und bei verborgenen
     // Kontoständen (••••••) steht der Wert einfach da, ohne Animation.
+    // rollAt: Startzeitpunkt (performance.now) für den nächsten Roll eines Saldos – nach einem Eingang bei
+    // geschlossener Leiste rollt er erst zusammen mit dem Glimmen der Zeile
+    const rollAt = new Map()
     function rollHost (key, text, num, rollable) {
       const host = el('span', { class: 'xw-roll' })
       const prev = prevValues.get(key)
       prevValues.set(key, rollable ? { text, num } : null)
+      const at = rollAt.get(key)
+      rollAt.delete(key)
       if (rollable && prev && prev.text !== text) {
+        const delay = at ? Math.round(at - performance.now()) : 0
+        if (delay > 0) {
+          host.classList.add('is-delayed')
+          host.style.setProperty('--xw-roll-d', delay + 'ms')
+        }
         host.appendChild(el('span', { class: 'xw-roll-cur', text: prev.text }))
         XW.roll(host, text, num > prev.num ? 'up' : num < prev.num ? 'down' : '')
       } else {
@@ -1167,6 +1454,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       const item = el('div', {
         class: 'xw-item' + (w.isCurrent ? ' is-current' : w.running ? ' is-running' : ''),
         style: `--xw-i:${index + 2}`, // Kopf 0, Summe 1, Wallet-Zeilen ab 2
+        'data-id': w.id,
         role: 'listitem',
         tabindex: w.isCurrent ? null : '0',
         title: w.isCurrent ? T.itemCurrent : (w.running ? T.itemRunning : T.itemOpen),
@@ -1938,6 +2226,65 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         }],
       })
     }
+
+    // -----------------------------------------------------------------------------------------
+    // Geld eingegangen (@xw:notify). main.js schickt den Eingang nur an das fokussierte Fenster und nie
+    // an das Fenster der empfangenden Wallet selbst – dort zeigt Exodus ihn mit eigener Anzeige und Ton.
+    // -----------------------------------------------------------------------------------------
+
+    // Exodus' eigener Eingangston, für jede Wallet dieselbe Datei (src/static/media/audio/receive.wav,
+    // derselbe Pfad, den Exodus selbst nutzt). Einmal laden, danach wiederverwenden.
+    const receiveSound = new Audio('media/audio/receive.wav')
+    receiveSound.preload = 'auto'
+
+    const itemFor = (id) => [...list.children].find((n) => n.dataset && n.dataset.id === id) || null
+
+    function formatAmount (n, ticker) {
+      const f = (opts) => new Intl.NumberFormat(intlLocale(), opts).format(n)
+      let text = f({ maximumFractionDigits: 8 })
+      if (!/[1-9]/.test(text)) text = f({ maximumSignificantDigits: 4 }) // Kleinstbeträge (z. B. Token mit 18 Stellen)
+      return '+' + text + ' ' + ticker
+    }
+
+    async function onReceived (ev) {
+      if (!ev || typeof ev.amount !== 'number' || !ev.ticker) return
+      // Sicherheitsnetz: Eingang auf der Wallet dieses Fensters → nichts (keine Karte, kein Punkt, kein Glimmen)
+      const here = state && state.wallets.find((w) => w.isCurrent)
+      if (here && ev.walletId && here.id === ev.walletId) return
+      if (ev.language) applyLanguage(ev.language)
+      const hidden = !!ev.hidden
+      const name = ev.wallet || T.standard
+      const sound = ev.sound && ev.sound.on === false ? null : receiveSound
+      if (sound && ev.sound && typeof ev.sound.volume === 'number') sound.volume = ev.sound.volume
+      const card = XW.nt.notify(ntStack, {
+        wallet: { name, img: ev.avatar || 'svg/brand/exodus-logomark.svg' },
+        coin: { name: ev.coin || ev.ticker, ticker: ev.ticker, icon: ev.icon || null },
+        amount: hidden ? '' : formatAmount(ev.amount, ev.ticker),
+        value: hidden || typeof ev.value !== 'number' ? null : '≈ ' + money(ev.value, ev.currency),
+        portfolio: ev.portfolio || null,
+        time: ago(new Date(ev.at).toISOString()),
+        hidden,
+      }, {
+        sound,
+        // Öffnen bzw. nach vorne holen – dieselbe Aktion wie ein Klick auf die Wallet-Zeile
+        onOpen: () => { if (ev.walletId) openWallet({ id: ev.walletId, label: name }, false) },
+      })
+      if (!ev.avatar) card.querySelector('.xw-nt-av').classList.add('is-exodus')
+
+      if (open) {
+        // Leiste offen: Zeile glimmt sofort, der Saldo rollt beim Neuzeichnen (bei verborgenen Kontoständen nicht)
+        await refresh()
+        const item = ev.walletId && itemFor(ev.walletId)
+        if (item) XW.nt.markWallet(item, 0)
+      } else {
+        unseen++
+        if (ev.walletId) pending.add(ev.walletId)
+        XW.nt.badge(toggle, unseen)
+      }
+    }
+    ipcRenderer.on('exodus-wallets:received', (_event, ev) => {
+      onReceived(ev).catch((e) => debug('Eingang-Anzeige fehlgeschlagen: ' + e.message))
+    })
 
     // Beim Zurückwechseln ins Fenster sofort die Stände der anderen Wallets nachladen
     window.addEventListener('focus', () => { if (open) refresh() })
