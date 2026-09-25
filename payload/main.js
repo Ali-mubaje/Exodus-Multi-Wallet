@@ -519,31 +519,83 @@ const BG_EVERY_MS = 20 * 1000
 const BG_RETRY_MS = 90 * 1000
 
 let hiddenMode = false
-const suppressed = new Map() // windows Exodus wanted to show while we're hidden → {maximize}
+let booting = false // hidden start: Exodus' UI has not finished starting yet
+let bypass = false // our own window calls pass straight through the wrappers below
+const suppressed = new Map() // windows Exodus wanted to show while we're hidden → {maximize, fullScreen}
+const ghosts = new Set() // windows shown fully transparent while Exodus' UI starts (see below)
+let ghostSince = 0
+const GHOST_MAX_MS = 2 * 60 * 1000
 const SHOW_METHODS = ['show', 'showInactive', 'focus', 'restore', 'maximize', 'setFullScreen']
 
-// Exodus shows its main window itself (show()/maximize() after loading). In hidden mode we intercept
-// exactly these calls and remember them – on opening we replay them. Nothing else changes.
+// Exodus shows its windows itself (show()/maximize() after loading). In hidden mode we intercept exactly
+// these calls and remember them – on opening we replay them.
+// Chromium does not render a hidden window at all (no animation frames, document "hidden"), and Exodus'
+// UI only finishes starting once it has rendered – a window that is simply never shown stays stuck on an
+// empty page. So while the UI starts, the main window is shown as a "ghost": fully transparent,
+// click-through, not in the taskbar and on top (so no other window covers it). Once Exodus has loaded,
+// it is hidden for real (endGhosts, from tick()). Other windows (e.g. Exodus' unlock window) stay hidden.
+const isMainWindow = (win) => !(BrowserWindow && BaseWindow && BrowserWindow !== BaseWindow && win instanceof BrowserWindow)
 function patchShowMethods () {
   for (const Cls of [BaseWindow, BrowserWindow]) {
     if (!Cls || !Cls.prototype) continue
-    for (const m of SHOW_METHODS) {
+    for (const m of [...SHOW_METHODS, 'hide']) {
       const orig = Cls.prototype[m]
       if (typeof orig !== 'function' || orig.__xw) continue
       const wrapped = function (...args) {
-        if (hiddenMode && !(m === 'setFullScreen' && !args[0])) {
-          const intent = suppressed.get(this) || {}
-          if (m === 'maximize') intent.maximize = true
-          if (m === 'setFullScreen') intent.fullScreen = true
-          suppressed.set(this, intent)
-          return undefined
-        }
-        return orig.apply(this, args)
+        if (!hiddenMode || bypass) return orig.apply(this, args)
+        // Exodus hides a window itself (e.g. the unlock window after unlocking): forget the show intent
+        if (m === 'hide') { suppressed.delete(this); return orig.apply(this, args) }
+        if (m === 'setFullScreen' && !args[0]) return orig.apply(this, args)
+        const intent = suppressed.get(this) || {}
+        if (m === 'maximize') intent.maximize = true
+        if (m === 'setFullScreen') intent.fullScreen = true
+        suppressed.set(this, intent)
+        if (booting && isMainWindow(this)) ghostShow(this)
+        return undefined
       }
       wrapped.__xw = true
       Cls.prototype[m] = wrapped
     }
   }
+}
+
+// Window calls of our own, past the wrappers
+function own (fn) {
+  bypass = true
+  try { return fn() } finally { bypass = false }
+}
+
+function setGhostLook (win, on) {
+  const tryIt = (f) => { try { f() } catch (e) {} }
+  tryIt(() => win.setOpacity(on ? 0 : 1))
+  tryIt(() => win.setIgnoreMouseEvents(on))
+  tryIt(() => win.setSkipTaskbar(on))
+  tryIt(() => (on ? win.setAlwaysOnTop(true, 'screen-saver') : win.setAlwaysOnTop(false)))
+}
+
+function ghostShow (win) {
+  if (ghosts.has(win) || win.isDestroyed()) return
+  ghosts.add(win)
+  if (!ghostSince) ghostSince = Date.now()
+  own(() => {
+    setGhostLook(win, true)
+    win.showInactive()
+  })
+}
+
+// Exodus has started (or it takes too long / waits for a password): hide the ghost windows for real
+function endGhosts (why) {
+  booting = false
+  if (!ghosts.size) return
+  own(() => {
+    for (const win of ghosts) {
+      if (win.isDestroyed()) continue
+      try { win.setAlwaysOnTop(false) } catch (e) {}
+      if (hiddenMode) win.hide()
+    }
+  })
+  ghosts.clear()
+  debug(`Background: ${currentWalletLabel()} started (${why}), window hidden`)
 }
 
 function enterHiddenMode () {
@@ -555,20 +607,25 @@ function enterHiddenMode () {
 // safety net: if a window becomes visible some other way, hide it again right away
 function keepHidden () {
   if (!hiddenMode) return
+  if (booting && ghostSince && Date.now() - ghostSince > GHOST_MAX_MS) endGhosts('timeout')
   const Win = BaseWindow || BrowserWindow
   for (const win of Win.getAllWindows()) {
-    if (win.isDestroyed() || !win.isVisible()) continue
+    if (win.isDestroyed() || !win.isVisible() || ghosts.has(win)) continue
     if (!suppressed.has(win)) suppressed.set(win, { maximize: win.isMaximized() })
-    win.hide()
+    own(() => win.hide())
   }
 }
 
 function revealWindows () {
   if (!hiddenMode) return focusWindows()
   hiddenMode = false
+  booting = false
   if (process.platform === 'darwin' && app.dock) app.dock.show()
+  for (const win of ghosts) if (!win.isDestroyed()) setGhostLook(win, false)
+  ghosts.clear()
   for (const [win, intent] of suppressed) {
     if (win.isDestroyed()) continue
+    setGhostLook(win, false)
     win.show()
     if (intent.maximize) win.maximize()
     if (intent.fullScreen) win.setFullScreen(true)
@@ -585,12 +642,28 @@ function hideToBackground () {
   const Win = BaseWindow || BrowserWindow
   const visible = Win.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible())
   enterHiddenMode()
-  for (const win of visible) {
-    suppressed.set(win, { maximize: win.isMaximized() })
-    win.hide()
-  }
+  own(() => {
+    for (const win of visible) {
+      suppressed.set(win, { maximize: win.isMaximized() })
+      win.hide()
+    }
+  })
   debug(`Background: ${currentWalletLabel()} now keeps running invisibly`)
   writeLive(true)
+}
+
+// Does Exodus want to show its unlock window (password needed)? That window is a separate page
+// (unlock.html); Exodus' own lock flag in the UI state is not reliable for this.
+function unlockWanted () {
+  const Win = BaseWindow || BrowserWindow
+  for (const win of Win.getAllWindows()) {
+    if (win.isDestroyed() || !win.webContents) continue
+    let url = ''
+    try { url = win.webContents.getURL() } catch (e) {}
+    if (!/\/unlock\.html/i.test(url)) continue
+    if (win.isVisible() || suppressed.has(win)) return true
+  }
+  return false
 }
 
 function readLive (dir) {
@@ -1100,13 +1173,14 @@ const STATUS_JS = `(() => {
 })()`
 const SOUNDS_JS = '(globalThis.__xwReceiveSounds && globalThis.__xwReceiveSounds.n) || 0'
 
-// starting → onboarding (Exodus asks: new or restore) → locked (password) → loading →
-// restoring (coins are being loaded) → syncing (balances still missing) → ready
-function statusFrom (res) {
+// starting → onboarding (Exodus asks: new or restore) → locked (password: Exodus shows its unlock
+// window) → restoring (coins are being loaded) → syncing (balances still missing) → ready.
+// Exodus' own isLocked/isLoading flags in the UI state are not kept up to date there, so they are
+// not used (an unlocked, working wallet still reports isLocked: true).
+function statusFrom (res, locked) {
+  if (locked) return { state: 'locked' }
   if (!res || res.error) return { state: 'starting' }
   if (!res.walletExists) return { state: 'onboarding' }
-  if (res.locked) return { state: 'locked' }
-  if (res.loading) return { state: 'loading' }
   if (res.restoring || res.restoringLeft > 0) return { state: 'restoring', left: res.restoringLeft }
   if (res.fiatLoaded === false) return { state: 'syncing' }
   return { state: 'ready' }
@@ -1338,16 +1412,24 @@ async function trackSetup (wc) {
 
 // Every 3 s: wallet state (for the heartbeat and sidebar), then check for incoming payments
 let ticking = false
+let ghostDoneSince = 0
 async function tick (wc) {
   if (!wc || wc.isDestroyed() || ticking) return
   ticking = true
   try {
     const res = await runInUi(wc, STATUS_JS, 2000)
     if (res && typeof res.sounds === 'number' && soundsSeen == null) soundsSeen = res.sounds
-    const next = statusFrom(res)
+    const next = statusFrom(res, unlockWanted())
     // During a new wallet's first address query: "saving addresses"
     liveStatus = settingUp && next.state === 'ready' ? { state: 'addresses' } : next
     writeLive()
+    // Hidden start: once Exodus is ready (or waits for a password) for a few seconds, hide the ghost window
+    if (booting) {
+      if (next.state === 'ready' || next.state === 'locked') {
+        if (!ghostDoneSince) ghostDoneSince = Date.now()
+        else if (Date.now() - ghostDoneSince >= 3000) endGhosts(next.state)
+      } else ghostDoneSince = 0
+    }
     if (next.state === 'ready' || next.state === 'starting') await checkHoldings(wc)
     // Locked or reloading: forget the state – otherwise its reappearance would look like an incoming payment
     else holdingsBase = null
@@ -1761,6 +1843,7 @@ try {
   if (!redirectToStartWallet()) {
     // Started invisibly (background sync): don't even show Exodus' window
     if (startedHidden) {
+      booting = true // the main window is shown as a transparent "ghost" until Exodus has started
       enterHiddenMode()
       debug('Started in the background (no window)')
     }
@@ -1813,6 +1896,6 @@ module.exports = {
   _test: {
     api, buildState, snapshotBalance, checkHoldings, deliverReceived, rememberUi, tick, trackSetup, markSetup,
     lockAlive, iconFor, ensureBackground, backgroundWatchdog, enterHiddenMode, revealWindows, hideToBackground, keepHidden,
-    isHidden: () => hiddenMode, live: () => liveStatus,
+    isHidden: () => hiddenMode, live: () => liveStatus, setBooting: (on) => { booting = on },
   },
 }

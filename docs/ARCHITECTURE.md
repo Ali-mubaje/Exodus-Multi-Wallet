@@ -72,9 +72,12 @@ refuse to patch while the app is open.
   portfolios (Ledger/Trezor). Interval: 5 min. Stored under `addresses`/`addressesAt`.
 
 ### Wallet status (every window, every 3 s)
-- `STATUS_JS` reads Exodus' own redux state: `application.walletExists / isLocked / isLoading /
-  isRestoring`, `restoringAssets.data` (coins still being restored) and `fiatBalances.loaded`.
-  `statusFrom()` turns that into `onboarding → locked → loading → restoring (n left) → syncing → ready`.
+- `STATUS_JS` reads Exodus' own redux state: `application.walletExists / isRestoring`,
+  `restoringAssets.data` (coins still being restored) and `fiatBalances.loaded`. **Locked** is taken from
+  the windows instead: Exodus asks for the password in a separate window (`unlock.html`), so the wallet is
+  locked while Exodus shows (or, when hidden, wants to show) that window. `application.isLocked` and
+  `isLoading` are not usable – they stay `true` in a running, unlocked wallet.
+  `statusFrom()` turns this into `starting → onboarding → locked → restoring (n left) → syncing → ready`.
 - Each window writes it with `pid` and `hidden` to `wallet-switcher-live.json` in its own folder (on
   change, at least every 10 s). The sidebar reads it for other wallets (fresh = younger than 25 s).
 
@@ -83,19 +86,28 @@ refuse to patch while the app is open.
   isn't waiting for its 12 words and isn't paused is launched with `EXODUS_WALLETS_HIDDEN=1`. A
   `wallet-switcher-bgstart` file (mtime) makes sure only one window launches it and retries after 90 s.
 - A **hidden** instance (`enterHiddenMode()`) wraps `show / showInactive / focus / restore / maximize /
-  setFullScreen` of `BaseWindow`/`BrowserWindow`: Exodus' own attempts to show its window are recorded
-  instead of executed; a 400 ms safety net hides anything that still becomes visible. On macOS the Dock
-  icon is hidden. Exodus syncs as usual in its own hidden "Wallet Process" window.
+  setFullScreen / hide` of `BaseWindow`/`BrowserWindow`: Exodus' own attempts to show a window are
+  recorded instead of executed; a 400 ms safety net hides anything that still becomes visible. On macOS
+  the Dock icon is hidden. Exodus syncs as usual in its own hidden "Wallet Process" window.
+- **Ghost start:** Chromium does not render a window that was never shown (document `hidden`, no
+  `requestAnimationFrame`), and Exodus' UI never finishes starting in that state – it stays on an empty
+  page and never creates its store. So while a hidden instance starts, its main window (the `BaseWindow`)
+  is shown as a "ghost": opacity 0, click-through, not in the taskbar, always on top (never covered). As
+  soon as the status is `ready` (or `locked`) for 3 s, `endGhosts()` hides it for real – the UI keeps
+  running afterwards. After 2 min it is hidden in any case. Other windows (e.g. the unlock window) are
+  never shown. Measured with a test wallet: ready after ~15 s, hidden ~8 s later.
 - **Reveal:** opening the wallet launches Exodus for that folder again; Exodus reports that to the
-  running instance as `second-instance`. Our handler (registered before Exodus' own) replays the recorded
-  `show()`/`maximize()`, then Exodus focuses the window. The `focus`/`showBackup` commands reveal too.
+  running instance as `second-instance`. Our handler (registered before Exodus' own) restores the normal
+  look (opacity, taskbar, mouse), replays the recorded `show()`/`maximize()`, then Exodus focuses the
+  window. The `focus`/`showBackup` commands reveal too.
   `hide` (menu *Move to background*) goes the other way.
 - **Watchdog:** a hidden instance quits once no visible window has a fresh live file for 30 s, or when
   background sync is switched off (`backgroundSync` in `settings.json`, default on).
 - **Pause:** `wallet-switcher-pause` holds a timestamp until which the wallet must not be started –
   2 min around rename/delete, and effectively "until opened again" after an explicit *Close*.
-- **Locked wallets:** a password-protected wallet stays on Exodus' lock screen in the background (status
-  `locked`); the add-on never touches passwords. After locking/unlocking the payment baseline is reset.
+- **Locked wallets:** a password-protected wallet waits for its password in the background (status
+  `locked`, Exodus' unlock window stays hidden until the wallet is opened); the add-on never touches
+  passwords. After locking/unlocking the payment baseline is reset.
 
 ### Setup progress for new wallets
 - *Create*, *Restore* and *Adopt old folder* write `wallet-switcher-setup.json` (`kind`, `since`).
@@ -216,7 +228,7 @@ Checkpoints if something stops working:
 5. **Icon path** `src/res/deps/img/<asset>-<hash>.svg`.
 6. **Backup route** `/settings/backup` for "show 12 words".
 7. **Receive sound** `src/static/media/audio/receive.wav` (page-relative `media/audio/receive.wav`).
-8. **Redux state** `application.{walletExists,isLocked,isLoading,isRestoring}` and `restoringAssets`
+8. **Redux state** `application.{walletExists,isRestoring}`, `restoringAssets` and the unlock window `unlock.html`
    (wallet status), `second-instance` handling and the `show()`/`maximize()` calls of the main window
    (background sync).
 
