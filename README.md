@@ -30,14 +30,25 @@ work but not yet tested against a specific version.
   subtotals (e.g. `$12,330.19 + £150.14`; no online exchange-rate conversion).
 - **Balances without opening** – every running window saves its last fiat balance every 20 s, so the
   sidebar shows the balances of all wallets.
-- **Incoming-payment notifications** – when another running wallet (open in a different window)
-  receives funds, the window you're working in shows a small card at the top left: coin (with the
-  original Exodus icon), amount, value at the time it arrived, wallet and portfolio – and plays Exodus'
-  own receive sound. Click the card to jump to that wallet. With the sidebar closed, a green dot/counter
-  on the wallet button marks unseen payments; opening the sidebar makes the wallet's row glow and its
-  balance roll up. Payments to the wallet of the current window are left to Exodus' own notification,
-  and only the window in front shows the card, so the sound never plays twice. Hidden balances hide the
-  amount here too.
+- **Background sync** – while any Exodus window is open, all your other wallets keep running
+  invisibly (each as its own hidden Exodus instance, using Exodus' own sync). Balances stay current and
+  payments are detected even for wallets you don't have open. Open a background wallet from the sidebar
+  and its window simply appears; *Move to background* hides it again. Wallets you explicitly *close* stay
+  closed until you open them again. When the last Exodus window closes, the background wallets quit too.
+  Switch it off in the sidebar (*Sync all wallets in the background*). Wallets with a password stay
+  locked in the background until you open them once and unlock them – the sidebar marks them.
+- **Incoming-payment notifications** – when another wallet receives funds, the window you're working
+  in shows a small card at the top left: coin (with the original Exodus icon), amount, value at the time
+  it arrived, wallet and portfolio. Click the card to jump to that wallet. With the sidebar closed, a
+  green dot/counter on the wallet button marks unseen payments; opening the sidebar makes the wallet's
+  row glow and its balance roll up. Payments to the wallet of the current window are left to Exodus' own
+  notification, and only the window in front shows the card. The sound is Exodus' own receive sound,
+  exactly once: Exodus already plays it in the receiving wallet's (even hidden) window, so the card only
+  plays it itself if Exodus didn't. Hidden balances hide the amount here too.
+- **Setup progress for new wallets** – after *Create*, *Restore with 12 words* or *Adopt old folder*, the
+  wallet needs to stay open until Exodus has loaded everything. The sidebar shows what's happening
+  (e.g. *Restoring – 12 coins left · keep it open*), and a **Ready** card appears once all balances and
+  addresses are loaded – then you can close it.
 - **Copy addresses without opening** – receive addresses for all coins, with a coin search and
   **portfolio tabs**; with several portfolios you copy the address of the right one.
 - **Bulk export** – *Export addresses …* lets you multi-select portfolios (and optionally filter by
@@ -196,8 +207,11 @@ Windows-only conveniences that simply don't appear elsewhere:
   ```sh
   xattr -r /Applications/Exodus.app | grep quarantine
   ```
-- Everything else – switching, balances, notifications, addresses, rename, delete, start wallet,
-  custom pictures – works on all platforms.
+- **macOS background sync:** background wallets are hidden from the Dock. macOS may throttle apps
+  without a visible window (App Nap), so on a Mac background wallets can update more slowly than on
+  Windows.
+- Everything else – switching, balances, background sync, notifications, addresses, rename, delete,
+  start wallet, custom pictures – works on all platforms.
 
 Tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** (the latest on each at the time).
 **Linux** has not been tested against a specific version yet; the installer detects the version and
@@ -227,6 +241,8 @@ these.
   in each wallet's data folder.
 - For notifications it reads each running wallet's coin amounts per portfolio (read-only) and passes
   detected payments between windows through small local files; nothing leaves the computer.
+- Background sync starts the normal Exodus app for each wallet, just without showing its window – it
+  never enters or stores passwords; a password-protected wallet stays locked until you unlock it.
 - “Show 12 words” only opens Exodus' own backup screen – Exodus handles the password prompt.
 - Delete means **trash/recycle bin**, never a hard delete. If moving to the bin fails, nothing happens.
 - Actions only accept calls from the real Exodus UI (verified origin and session).

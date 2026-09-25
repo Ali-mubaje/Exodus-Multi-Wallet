@@ -56,7 +56,7 @@ function readAsar (file) {
     const payloadSize = head.readUInt32LE(8)
     const strLen = head.readUInt32LE(12)
     if (head.readUInt32LE(0) !== 4 || payloadSize + 4 !== headerPickleSize || strLen > payloadSize) {
-      throw new Error(`${file} hat kein bekanntes asar-Format.`)
+      throw new Error(`${file} is not in a known asar format.`)
     }
     const json = Buffer.alloc(strLen)
     fs.readSync(fd, json, 0, strLen, 16)
@@ -77,7 +77,7 @@ function getEntry (header, parts) {
 }
 
 function readEntry (asar, entry) {
-  if (entry.unpacked) throw new Error('Ausgelagerte Datei (unpacked) wird nicht unterstützt.')
+  if (entry.unpacked) throw new Error('Unpacked files (app.asar.unpacked) are not supported.')
   const buf = Buffer.alloc(entry.size)
   const fd = fs.openSync(asar.file, 'r')
   try {
@@ -114,7 +114,7 @@ function copyRange (srcFile, start, length, outFd) {
     let done = 0
     while (done < length) {
       const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, length - done), start + done)
-      if (n <= 0) throw new Error('Unerwartetes Dateiende beim Kopieren.')
+      if (n <= 0) throw new Error('Unexpected end of file while copying.')
       fs.writeSync(outFd, chunk, 0, n)
       done += n
     }
@@ -126,7 +126,7 @@ function copyRange (srcFile, start, length, outFd) {
 const isPatched = (asar) => !!getEntry(asar.header, TARGET_DIR)
 
 // ---------------------------------------------------------------------------------------------
-// Exodus finden / prüfen
+// Find / check Exodus
 // ---------------------------------------------------------------------------------------------
 
 function compareVersions (a, b) {

@@ -56,7 +56,9 @@ refuse to patch while the app is open.
 - **Default wallet:** the `Exodus` folder in the app-data dir (owned by Exodus, launched without
   `--datadir`).
 - **Other wallets:** one folder each under `Exodus-Wallets/<name>`, launched with `--datadir <folder>`.
-- While a wallet runs, Chromium keeps a `lockfile` in its folder – that's how "open" is detected.
+- "Open" detection: on Windows Chromium keeps a `lockfile` in the folder while Exodus runs; on
+  macOS/Linux Exodus' single-instance lock is the symlink `SingletonLock` → `<host>-<pid>`, and
+  `lockAlive()` also checks that this pid still exists (a crash can leave the symlink behind).
 
 ### Balance & address cache
 - A small script is injected into each running Exodus window via `executeJavaScript` that reads fiat
@@ -69,8 +71,41 @@ refuse to patch while the app is open.
   `addressProvider.getReceiveAddress({ assetName, walletAccount })` per portfolio, excluding hardware
   portfolios (Ledger/Trezor). Interval: 5 min. Stored under `addresses`/`addressesAt`.
 
+### Wallet status (every window, every 3 s)
+- `STATUS_JS` reads Exodus' own redux state: `application.walletExists / isLocked / isLoading /
+  isRestoring`, `restoringAssets.data` (coins still being restored) and `fiatBalances.loaded`.
+  `statusFrom()` turns that into `onboarding → locked → loading → restoring (n left) → syncing → ready`.
+- Each window writes it with `pid` and `hidden` to `wallet-switcher-live.json` in its own folder (on
+  change, at least every 10 s). The sidebar reads it for other wallets (fresh = younger than 25 s).
+
+### Background sync (hidden instances)
+- A **visible** window runs `ensureBackground()` every 20 s: every wallet that has a seed, isn't running,
+  isn't waiting for its 12 words and isn't paused is launched with `EXODUS_WALLETS_HIDDEN=1`. A
+  `wallet-switcher-bgstart` file (mtime) makes sure only one window launches it and retries after 90 s.
+- A **hidden** instance (`enterHiddenMode()`) wraps `show / showInactive / focus / restore / maximize /
+  setFullScreen` of `BaseWindow`/`BrowserWindow`: Exodus' own attempts to show its window are recorded
+  instead of executed; a 400 ms safety net hides anything that still becomes visible. On macOS the Dock
+  icon is hidden. Exodus syncs as usual in its own hidden "Wallet Process" window.
+- **Reveal:** opening the wallet launches Exodus for that folder again; Exodus reports that to the
+  running instance as `second-instance`. Our handler (registered before Exodus' own) replays the recorded
+  `show()`/`maximize()`, then Exodus focuses the window. The `focus`/`showBackup` commands reveal too.
+  `hide` (menu *Move to background*) goes the other way.
+- **Watchdog:** a hidden instance quits once no visible window has a fresh live file for 30 s, or when
+  background sync is switched off (`backgroundSync` in `settings.json`, default on).
+- **Pause:** `wallet-switcher-pause` holds a timestamp until which the wallet must not be started –
+  2 min around rename/delete, and effectively "until opened again" after an explicit *Close*.
+- **Locked wallets:** a password-protected wallet stays on Exodus' lock screen in the background (status
+  `locked`); the add-on never touches passwords. After locking/unlocking the payment baseline is reset.
+
+### Setup progress for new wallets
+- *Create*, *Restore* and *Adopt old folder* write `wallet-switcher-setup.json` (`kind`, `since`).
+- The wallet's own window watches its status; once it has been `ready` for a few seconds, it fetches and
+  saves the addresses (`snapshotAddresses(force)`, shown as `addresses`) and the balance, then deletes the
+  marker, stores `setupDoneAt` in the cache and writes a `type: 'ready'` event. That one is delivered to the
+  focused window like a payment – including the wallet's own window.
+
 ### Incoming-payment notifications
-- **Detect (every window, for its own wallet):** every 4 s `HOLDINGS_JS` reads the coin amount per
+- **Detect (every window, for its own wallet):** every 3 s `HOLDINGS_JS` reads the coin amount per
   portfolio and asset (`selectors.balances.getBalances(...).balance`) plus Exodus' own fiat value for it
   (`selectors.fiatBalances.byAssetSource`). The last amounts are kept in memory only; an increase is a
   payment.
@@ -78,7 +113,7 @@ refuse to patch while the app is open.
   (Exodus is still loading/syncing). A lower amount (a send, or an asset briefly missing while loading)
   is only accepted once it has stayed lower for 20 s.
 - **Hand-over:** the receiving window first saves its balance (so the others can roll it), then writes
-  one JSON file per payment to `Exodus-Wallets/.eingaenge/` – wallet, asset, amount, fiat value at that
+  one JSON file per payment to `Exodus-Wallets/.incoming/` – wallet, asset, amount, fiat value at that
   moment, currency, portfolio (only with several portfolios). If that window is in front, nothing is
   written: Exodus shows its own notification there.
 - **Deliver (only the focused window):** every second the window in front (`BaseWindow.getFocusedWindow()`)
@@ -87,8 +122,13 @@ refuse to patch while the app is open.
   It adds the coin icon as a `data:` URL, the wallet picture, the hide-balances setting and Exodus'
   sound setting (`config` keys `sounds.all.enabled` / `sounds.all.volume`) and sends
   `exodus-wallets:received`. Undelivered events expire after 10 min; old files are pruned.
-- **Only running wallets** (open in some window) are watched – a closed wallet has no process that
-  could read its balances.
+- **One sound:** Exodus plays `receive.wav` itself on `TX_RECEIVE` in the receiving wallet's window –
+  even when that window is hidden. `STATUS_JS` therefore wraps `HTMLMediaElement.prototype.play` in the
+  page (observe only, it always calls the original) and counts `receive.wav` plays. If the count went up
+  around the payment (checked 1.5 s after detection), the event carries `exodusSound: true` and the card
+  stays silent.
+- **Only running wallets** are watched – with background sync that is every wallet while any Exodus
+  window is open.
 
 ### Language (i18n)
 - Follows `selectors.locale.language` (default `en`). Main-process strings: `MESSAGES` (en, de).
@@ -100,7 +140,7 @@ refuse to patch while the app is open.
   `browser-window-created`. Titles are set on an interval: “EXODUS <version> – <wallet name>”.
 
 ### Start wallet & redirect
-- `startWallet` lives in `Exodus-Wallets/einstellungen.json`.
+- `startWallet` lives in `Exodus-Wallets/settings.json`.
 - When Exodus is launched without `--datadir` (desktop icon/start menu) and a different start wallet is
   set, `redirectToStartWallet()` relaunches into that folder and exits.
 - Our own launches carry `EXODUS_WALLETS_DIRECT=1` and are not redirected; shortcuts always use
@@ -120,7 +160,9 @@ refuse to patch while the app is open.
 
 ### Icons & pictures
 - **Coin icons:** taken from Exodus itself (`src/res/deps/img/<asset>-<hash>.svg`, preferring 40×40).
-  Tokens fall back to the base coin's icon.
+  Tokens Exodus adds at runtime (custom tokens, e.g. *XO Cash* on Solana) have no icon in the app; Exodus
+  stores theirs as `<data folder>/images/<asset>.svg`, which we read as a `data:` URL. Anything else falls
+  back to the base coin's icon.
 - **Wallet picture:** default is the Exodus logo. A custom picture is cropped square, resized to 128 px
   and stored as `wallet-switcher-avatar.png` in the data folder; the sidebar gets it as a `data:` URL
   (Exodus' CSP only allows `self` and `data:`).
@@ -152,9 +194,13 @@ refuse to patch while the app is open.
 | `wallet-switcher-avatar.png` | custom wallet picture (optional) |
 | `wallet-switcher-command.json` | short-lived command for this wallet's window |
 | `wallet-switcher-restore` | marker: wallet should be set up from a 12-word phrase |
+| `wallet-switcher-setup.json` | marker: new wallet, setup not finished yet |
+| `wallet-switcher-live.json` | live status of the running instance (pid, hidden, sync state) |
+| `wallet-switcher-pause` | do not start in the background until this timestamp |
+| `wallet-switcher-bgstart` | last background start (prevents double starts) |
 
-Global, under `Exodus-Wallets`: `einstellungen.json` (settings incl. start wallet, default-wallet
-display name), `importiert.log` (adopted old folders) and `.eingaenge/` (short-lived incoming-payment
+Global, under `Exodus-Wallets`: `settings.json` (settings incl. start wallet, default-wallet
+display name), `imported.log` (adopted old folders) and `.incoming/` (short-lived incoming-payment
 events and their `.done` claims, pruned after ~10 min).
 
 ## Adapting to a new Exodus version
@@ -170,8 +216,13 @@ Checkpoints if something stops working:
 5. **Icon path** `src/res/deps/img/<asset>-<hash>.svg`.
 6. **Backup route** `/settings/backup` for "show 12 words".
 7. **Receive sound** `src/static/media/audio/receive.wav` (page-relative `media/audio/receive.wav`).
+8. **Redux state** `application.{walletExists,isLocked,isLoading,isRestoring}` and `restoringAssets`
+   (wallet status), `second-instance` handling and the `show()`/`maximize()` calls of the main window
+   (background sync).
 
 The debug log on the desktop (`exodus-wallets-debug.log`) shows which step fails.
 
-> Note: source-code comments in `payload/` are currently in German; the user-facing UI, docs and
-> installer output are English.
+> Note: code comments, log output and docs are in English. The only German in the code is the German UI
+> translation (`TEXTS.de` in `preload.js`, `MESSAGES.de` in `main.js`), used when Exodus runs in German.
+> Up to v1.0.2 the global files were called `einstellungen.json` and `importiert.log`; `globalFile()`
+> renames them to `settings.json` / `imported.log` on first use, so existing settings are kept.

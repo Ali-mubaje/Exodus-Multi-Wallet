@@ -1,20 +1,20 @@
 'use strict'
 /*
- * Exodus Wallet-Seitenleiste – Hauptprozess
+ * Exodus wallet sidebar – main process
  * ------------------------------------------
- * Wird über eine einzige angehängte Zeile am Ende von src/app/main/index.js geladen (siehe install.js).
+ * Loaded via a single appended line at the end of src/app/main/index.js (see install.js).
  *
- * Verwaltet mehrere getrennte Exodus-Wallets (jede mit eigener 12-Wörter-Phrase), jede in einem
- * eigenen Datenordner. Gestartet wird Exodus dafür mit seinem offiziellen Parameter --datadir.
+ * Manages several separate Exodus wallets (each with its own 12-word phrase), each in its
+ * own data folder. Exodus is launched for this with its official --datadir parameter.
  *
- *  - greift NICHT auf Seeds, Passwörter oder private Schlüssel zu
- *  - baut KEINE Netzwerkverbindungen auf
- *  - liest nur die Fiat-Kontostände über Exodus' eigene Selektoren und speichert sie als Cache
- *    im Datenordner der jeweiligen Wallet (wallet-switcher-cache.json)
- *  - erkennt Eingänge an steigenden Coin-Mengen und meldet sie dem gerade fokussierten Fenster
+ *  - does NOT access seeds, passwords or private keys
+ *  - does NOT open any network connections
+ *  - only reads the fiat balances via Exodus' own selectors and stores them as a cache
+ *    in each wallet's data folder (wallet-switcher-cache.json)
+ *  - detects incoming payments from rising coin amounts and reports them to the currently focused window
  */
 
-// BaseWindow gibt es erst ab Electron 30 – Exodus nutzt es für sein Hauptfenster
+// BaseWindow exists only from Electron 30 on – Exodus uses it for its main window
 const { app, BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -25,25 +25,35 @@ const VERSION = '1.0.2'
 const TAG = '[exodus-wallets]'
 const PRELOAD = path.join(__dirname, 'preload.js')
 
-// Debug-Log in Datei schreiben (da DevTools evtl. deaktiviert)
+// Write the debug log to a file (since DevTools may be disabled)
 const DEBUG_LOG = path.join(app.getPath('desktop'), 'exodus-wallets-debug.log')
 const debug = (msg) => {
   const line = `[${new Date().toISOString()}] ${msg}\n`
   try { fs.appendFileSync(DEBUG_LOG, line) } catch (e) {}
   console.log(TAG, msg)
 }
-debug('=== main.js geladen ===')
+debug('=== main.js loaded ===')
 
-// Debug-Nachrichten von preload.js empfangen
+// Receive debug messages from preload.js
 ipcMain.on('exodus-wallets:debug', (event, msg) => {
   debug(`[preload] ${msg}`)
 })
 const CACHE_FILE = 'wallet-switcher-cache.json'
-const RESTORE_MARKER = 'wallet-switcher-restore' // unsere Merkhilfe: Wallet soll per 12 Wörtern eingerichtet werden
-const RESTORE_FLAG = 'restore-mnemonic' // Exodus' eigene Markierung: startet direkt mit "12 Wörter eingeben"
-const SETTINGS_FILE = 'einstellungen.json'
-const IMPORT_LOG = 'importiert.log'
-// Kurz genug, dass andere offene Fenster den Stand zeitnah sehen; der Snapshot selbst kostet < 1 ms
+const RESTORE_MARKER = 'wallet-switcher-restore' // our reminder: wallet should be set up via 12 words
+const RESTORE_FLAG = 'restore-mnemonic' // Exodus' own marker: starts directly with "enter 12 words"
+const SETTINGS_FILE = 'settings.json'
+const IMPORT_LOG = 'imported.log'
+// Up to v1.0.2 these two files had German names – they are renamed automatically on first use
+const OLD_FILE_NAMES = { [SETTINGS_FILE]: 'einstellungen.json', [IMPORT_LOG]: 'importiert.log' }
+function globalFile (name) {
+  const file = path.join(profilesRoot(), name)
+  const old = OLD_FILE_NAMES[name] ? path.join(profilesRoot(), OLD_FILE_NAMES[name]) : null
+  if (old && !exists(file) && exists(old)) {
+    try { fs.renameSync(old, file) } catch (e) {}
+  }
+  return file
+}
+// Short enough that other open windows see the state promptly; the snapshot itself costs < 1 ms
 const SNAPSHOT_EVERY_MS = 20 * 1000
 
 const norm = (p) => path.resolve(p).toLowerCase()
@@ -62,13 +72,23 @@ const standardDir = () => process.env.EXODUS_WALLETS_STANDARD_DIR || defaultStan
 const profilesRoot = () => process.env.EXODUS_WALLETS_ROOT || path.join(app.getPath('appData'), 'Exodus-Wallets')
 const currentDir = () => app.getPath('userData')
 const isCurrent = (dir) => norm(dir) === norm(currentDir())
-// Chromium legt "lockfile" im Datenordner an, solange eine Instanz läuft (wird beim Beenden gelöscht)
-const isRunning = (dir) => isCurrent(dir) || exists(path.join(dir, 'lockfile'))
+// Is an Exodus currently running in this data folder? Windows: Chromium keeps a "lockfile" open there (deleted on
+// exit). macOS/Linux: Exodus' single-instance lock is the symlink "SingletonLock" → "<machine>-<PID>";
+// after a crash it can be left behind, so we check whether the process is still alive.
+function lockAlive (dir) {
+  if (exists(path.join(dir, 'lockfile'))) return true
+  let target
+  try { target = fs.readlinkSync(path.join(dir, 'SingletonLock')) } catch (e) { return false }
+  const pid = Number(String(target).split('-').pop())
+  if (!pid) return true
+  try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' }
+}
+const isRunning = (dir) => isCurrent(dir) || lockAlive(dir)
 const hasWallet = (dir) => exists(path.join(dir, 'exodus.wallet', 'seed.seco'))
 
 // ---------------------------------------------------------------------------------------------
-// Sprache: folgt Exodus' eigener Einstellung (selectors.locale.language, Standard "en").
-// Wird beim Kontostand-Snapshot aus der Oberfläche gelesen; unbekannte Sprachen fallen auf Englisch.
+// Language: follows Exodus' own setting (selectors.locale.language, default "en").
+// Read from the UI during the balance snapshot; unknown languages fall back to English.
 // ---------------------------------------------------------------------------------------------
 
 const MESSAGES = {
@@ -153,11 +173,11 @@ function t (key, ...args) {
   const msg = MESSAGES[langKey(uiLanguage)][key]
   return typeof msg === 'function' ? msg(...args) : msg
 }
-// Die Standard-Wallet kann einen eigenen Anzeigenamen bekommen (ihr Ordner bleibt %APPDATA%\Exodus)
+// The default wallet can be given its own display name (its folder stays %APPDATA%\Exodus)
 const standardLabel = () => readSettings().standardName || t('standard')
 
 // ---------------------------------------------------------------------------------------------
-// Wallets auflisten
+// List wallets
 // ---------------------------------------------------------------------------------------------
 
 function walletDirs () {
@@ -171,7 +191,7 @@ function walletDirs () {
   }
   list.sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true }))
   list.unshift({ id: 'standard', name: 'Standard', dir: standardDir(), isStandard: true })
-  // Mit einem fremden --datadir gestartet? Dann trotzdem als "aktuelle Wallet" anzeigen.
+  // Started with a foreign --datadir? Then still show it as the "current wallet".
   if (!list.some((w) => isCurrent(w.dir))) {
     list.unshift({ id: 'current', name: path.basename(currentDir()), dir: currentDir(), isStandard: false, external: true })
   }
@@ -196,8 +216,12 @@ function lastUsed (dir) {
 function describe (w) {
   const walletExists = hasWallet(w.dir)
   if (walletExists && exists(path.join(w.dir, RESTORE_MARKER))) {
-    try { fs.unlinkSync(path.join(w.dir, RESTORE_MARKER)) } catch (e) {} // Wiederherstellung ist erledigt
+    try { fs.unlinkSync(path.join(w.dir, RESTORE_MARKER)) } catch (e) {} // restoration is done
   }
+  const running = isRunning(w.dir)
+  // Heartbeat of the running instance: hidden in the background? How far along is Exodus?
+  const live = running ? (isCurrent(w.dir) ? { hidden: hiddenMode, ...liveStatus } : readLive(w.dir)) : null
+  const setup = readJson(path.join(w.dir, SETUP_FILE))
   return {
     id: w.id,
     name: w.name,
@@ -205,7 +229,10 @@ function describe (w) {
     isStandard: w.isStandard,
     external: !!w.external,
     isCurrent: isCurrent(w.dir),
-    running: isRunning(w.dir),
+    running,
+    background: !!(live && live.hidden),
+    status: live ? { state: live.state, left: live.left || 0 } : null,
+    setup: setup ? { kind: setup.kind || null, since: setup.since || null } : null,
     hasWallet: walletExists,
     restorePending: !walletExists && exists(path.join(w.dir, RESTORE_MARKER)),
     lastUsed: lastUsed(w.dir),
@@ -214,8 +241,8 @@ function describe (w) {
   }
 }
 
-// Eigenes Wallet-Bild: liegt als kleines PNG im Datenordner der Wallet (wandert beim Umbenennen mit).
-// Die Seitenleiste bekommt es als data:-URL – Exodus' CSP erlaubt Bilder nur von 'self' und data:.
+// Custom wallet picture: stored as a small PNG in the wallet's data folder (moves along on rename).
+// The sidebar receives it as a data: URL – Exodus' CSP only allows images from 'self' and data:.
 const AVATAR_FILE = 'wallet-switcher-avatar.png'
 const AVATAR_SIZE = 128
 const avatarCache = new Map()
@@ -233,7 +260,7 @@ function avatarFor (dir) {
   }
 }
 
-// Die Adressliste holt die Seitenleiste nur bei Bedarf (api.addresses) – im Status reicht die Anzahl
+// The sidebar fetches the address list only on demand (api.addresses) – for the status the count is enough
 function summarizeCache (cache) {
   if (!cache) return null
   const { addresses, ...rest } = cache
@@ -245,7 +272,7 @@ function nextFreeName (wallets) {
   for (let i = 2; ; i++) if (!taken.has(`wallet ${i}`)) return `Wallet ${i}`
 }
 
-// displayOnly: nur Anzeigename (Standard-Wallet) – kein Ordner, also keine Ordner-Regeln
+// displayOnly: display name only (default wallet) – no folder, so no folder rules
 function validateName (raw, { allowSameAs, displayOnly } = {}) {
   const name = String(raw == null ? '' : raw).trim()
   if (!name) throw new Error(t('nameEmpty'))
@@ -254,7 +281,7 @@ function validateName (raw, { allowSameAs, displayOnly } = {}) {
   if (displayOnly) return name
   if (/[. ]$/.test(name)) throw new Error(t('nameTrailing'))
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name)) throw new Error(t('nameReserved'))
-  // "Standard" (de) bzw. "Default" (en) ist die Anzeige der Haupt-Wallet – beides freihalten, sonst Verwechslung
+  // "Standard" (de) and "Default" (en) are the display name of the main wallet – keep both free, otherwise confusion
   if (/^(standard|default)$/i.test(name)) throw new Error(t('nameStandard', name))
   const sameFolder = allowSameAs && allowSameAs.toLowerCase() === name.toLowerCase()
   if (!sameFolder && exists(path.join(profilesRoot(), name))) throw new Error(t('nameExists'))
@@ -262,7 +289,7 @@ function validateName (raw, { allowSameAs, displayOnly } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Alte, per Umbenennen "geparkte" Wallet-Ordner (z. B. %APPDATA%\Exodus\exodus.wallet1)
+// Old wallet folders "parked" by renaming (e.g. %APPDATA%\Exodus\exodus.wallet1)
 // ---------------------------------------------------------------------------------------------
 
 function knownSeedHashes () {
@@ -272,7 +299,7 @@ function knownSeedHashes () {
     try { if (exists(seed)) known.add(sha256File(seed)) } catch (e) {}
   }
   try {
-    for (const line of fs.readFileSync(path.join(profilesRoot(), IMPORT_LOG), 'utf8').split(/\r?\n/)) {
+    for (const line of fs.readFileSync(globalFile(IMPORT_LOG), 'utf8').split(/\r?\n/)) {
       const hash = line.split('\t')[0]
       if (/^[0-9a-f]{64}$/.test(hash)) known.add(hash)
     }
@@ -318,7 +345,7 @@ function importOldFolder (folderPath, rawName) {
   fs.mkdirSync(target)
   try {
     fs.cpSync(candidate.path, targetWallet, { recursive: true, errorOnExist: true, force: false })
-    // Kopie Datei für Datei prüfen
+    // Verify the copy file by file
     const files = listFiles(candidate.path)
     if (!files.length || files.length !== listFiles(targetWallet).length) throw new Error(t('copyIncomplete'))
     for (const rel of files) {
@@ -327,19 +354,20 @@ function importOldFolder (folderPath, rawName) {
       }
     }
   } catch (err) {
-    // nur die eben angelegte, unvollständige Kopie entfernen – das Original bleibt unberührt
+    // only remove the incomplete copy just created – the original stays untouched
     try { fs.rmSync(target, { recursive: true, force: true }) } catch (e) {}
     throw err
   }
-  fs.appendFileSync(path.join(profilesRoot(), IMPORT_LOG), `${candidate.hash}\t${candidate.path}\t${name}\t${new Date().toISOString()}\n`)
+  fs.appendFileSync(globalFile(IMPORT_LOG), `${candidate.hash}\t${candidate.path}\t${name}\t${new Date().toISOString()}\n`)
+  markSetup(target, 'import')
   return { id: 'p:' + name, name }
 }
 
 // ---------------------------------------------------------------------------------------------
-// Exodus starten
+// Launch Exodus
 // ---------------------------------------------------------------------------------------------
 
-// Der Squirrel-Starter (%LOCALAPPDATA%\exodus\Exodus.exe) startet immer die neueste installierte Version
+// The Squirrel launcher (%LOCALAPPDATA%\exodus\Exodus.exe) always starts the latest installed version
 function launcherPath () {
   const stub = path.resolve(path.dirname(process.execPath), '..', 'Exodus.exe')
   return exists(stub) ? stub : process.execPath
@@ -349,16 +377,22 @@ function launchArgs (dir) {
   return norm(dir) === norm(defaultStandardDir()) ? [] : ['--datadir', dir]
 }
 
-// Markiert Starts, die wir selbst auslösen: die Weiterleitung zur Start-Wallet (siehe unten) greift
-// nur, wenn jemand Exodus "einfach so" startet – nicht, wenn die Seitenleiste gezielt Standard öffnet.
+// Marks launches that we trigger ourselves: the redirect to the start wallet (see below) only kicks
+// in when someone starts Exodus "just like that" – not when the sidebar deliberately opens Default.
 const DIRECT_ENV = 'EXODUS_WALLETS_DIRECT'
+// Start as an invisible background instance (see "background sync"). Remove it from the
+// environment right away so launches from within this process (e.g. Exodus update) don't inherit it.
+const HIDDEN_ENV = 'EXODUS_WALLETS_HIDDEN'
+const startedHidden = process.env[HIDDEN_ENV] === '1'
+delete process.env[HIDDEN_ENV]
 
-function launch (dir) {
+function launch (dir, { hidden = false } = {}) {
   const env = {}
   for (const [k, v] of Object.entries(process.env)) if (!/^(ELECTRON_|CHROME_)/i.test(k)) env[k] = v
   env[DIRECT_ENV] = '1'
+  if (hidden) env[HIDDEN_ENV] = '1'
   const child = spawn(launcherPath(), launchArgs(dir), { detached: true, stdio: 'ignore', env })
-  child.on('error', (err) => console.error(TAG, 'Start fehlgeschlagen:', err.message))
+  child.on('error', (err) => console.error(TAG, 'Launch failed:', err.message))
   child.unref()
 }
 
@@ -373,8 +407,8 @@ async function waitUntil (check, timeoutMs) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Start-Wallet: Exodus ohne --datadir gestartet (Desktop-Symbol, Startmenü) → an die festgelegte
-// Wallet weiterreichen. Läuft beim Laden von index.js, also bevor Exodus ein Fenster öffnet.
+// Start wallet: Exodus started without --datadir (desktop icon, start menu) → hand off to the
+// configured wallet. Runs while index.js is loading, i.e. before Exodus opens a window.
 // ---------------------------------------------------------------------------------------------
 
 function redirectToStartWallet () {
@@ -386,28 +420,29 @@ function redirectToStartWallet () {
   if (!startId || startId === 'standard') return false
   const target = walletDirs().find((w) => w.id === startId)
   if (!target || !exists(target.dir)) {
-    debug(`Start-Wallet ${startId} nicht gefunden – öffne Standard`)
+    debug(`Start wallet ${startId} not found – opening Default`)
     return false
   }
-  debug(`Start-Wallet: leite weiter zu ${target.name}`)
+  debug(`Start wallet: redirecting to ${target.name}`)
   launch(target.dir)
   app.exit(0)
   return true
 }
 
 // ---------------------------------------------------------------------------------------------
-// Befehle zwischen den Exodus-Fenstern. Jede Wallet läuft in einem eigenen Prozess; wir legen eine
-// kleine JSON-Datei in ihren Datenordner, die der dortige Prozess abholt ("schließen", "12 Wörter").
+// Commands between the Exodus windows. Each wallet runs in its own process; we drop a
+// small JSON file into its data folder that the process there picks up ("close", "12 words").
 // ---------------------------------------------------------------------------------------------
 
 const COMMAND_FILE = 'wallet-switcher-command.json'
-const COMMAND_MAX_AGE_MS = 10 * 60 * 1000 // z. B. solange man beim Start noch das Passwort eingibt
+const COMMAND_MAX_AGE_MS = 10 * 60 * 1000 // e.g. while the password is still being entered at startup
 
 function sendCommand (dir, cmd) {
   writeJson(path.join(dir, COMMAND_FILE), { cmd, at: Date.now() })
 }
 
 function focusWindows () {
+  if (hiddenMode) return revealWindows()
   const Win = BaseWindow || BrowserWindow
   for (const win of Win.getAllWindows()) {
     if (win.isDestroyed() || !win.isVisible()) continue
@@ -415,10 +450,11 @@ function focusWindows () {
     win.show()
     win.focus()
   }
+  if (process.platform === 'darwin') app.focus({ steal: true })
 }
 
-// Exodus' eigener Bildschirm "Backup" – dort zeigt Exodus die 12 Wörter erst nach Passwort-Eingabe.
-// Wir entschlüsseln bewusst nichts selbst.
+// Exodus' own "Backup" screen – there Exodus shows the 12 words only after the password is entered.
+// We deliberately don't decrypt anything ourselves.
 const SHOW_BACKUP_JS = `(() => {
   if (!globalThis.navUtil || !globalThis.store) return false
   globalThis.navUtil.navigateTo('/settings/backup')
@@ -448,13 +484,16 @@ async function checkCommands () {
     if (!cmd || typeof cmd.at !== 'number' || Date.now() - cmd.at > COMMAND_MAX_AGE_MS) return done()
     if (cmd.cmd === 'quit') {
       done()
-      debug('Befehl: schließen')
+      debug('Command: close')
       app.quit()
     } else if (cmd.cmd === 'focus') {
       done()
       focusWindows()
+    } else if (cmd.cmd === 'hide') {
+      done()
+      hideToBackground()
     } else if (cmd.cmd === 'showBackup') {
-      // Datei liegen lassen, bis die Oberfläche bereit ist (Passwort-Eingabe kann dauern)
+      // leave the file until the UI is ready (entering the password can take a while)
       if (await showBackupHere()) done()
     } else {
       done()
@@ -465,8 +504,163 @@ async function checkCommands () {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Umbenennen der Wallet im eigenen Fenster: der Ordner ist in Benutzung, solange dieser Prozess
-// läuft. Ein kleines PowerShell-Skript wartet, bis Exodus beendet ist, benennt um und öffnet neu.
+// Background sync: as long as any Exodus window is open, all other wallets run along
+// as invisible Exodus instances. Exodus syncs there quite normally (in its own, already
+// hidden "Wallet Process"), and we detect incoming payments and store balances – without a window.
+// Whoever opens a background wallet simply gets to see its window.
+// ---------------------------------------------------------------------------------------------
+
+const LIVE_FILE = 'wallet-switcher-live.json' // heartbeat: visible/hidden, sync progress
+const LIVE_FRESH_MS = 25 * 1000
+const PAUSE_FILE = 'wallet-switcher-pause' // just closed/renamed/deleted: don't restart
+const PAUSE_MS = 2 * 60 * 1000
+const BG_CLAIM_FILE = 'wallet-switcher-bgstart' // who last started the wallet in the background
+const BG_EVERY_MS = 20 * 1000
+const BG_RETRY_MS = 90 * 1000
+
+let hiddenMode = false
+const suppressed = new Map() // windows Exodus wanted to show while we're hidden → {maximize}
+const SHOW_METHODS = ['show', 'showInactive', 'focus', 'restore', 'maximize', 'setFullScreen']
+
+// Exodus shows its main window itself (show()/maximize() after loading). In hidden mode we intercept
+// exactly these calls and remember them – on opening we replay them. Nothing else changes.
+function patchShowMethods () {
+  for (const Cls of [BaseWindow, BrowserWindow]) {
+    if (!Cls || !Cls.prototype) continue
+    for (const m of SHOW_METHODS) {
+      const orig = Cls.prototype[m]
+      if (typeof orig !== 'function' || orig.__xw) continue
+      const wrapped = function (...args) {
+        if (hiddenMode && !(m === 'setFullScreen' && !args[0])) {
+          const intent = suppressed.get(this) || {}
+          if (m === 'maximize') intent.maximize = true
+          if (m === 'setFullScreen') intent.fullScreen = true
+          suppressed.set(this, intent)
+          return undefined
+        }
+        return orig.apply(this, args)
+      }
+      wrapped.__xw = true
+      Cls.prototype[m] = wrapped
+    }
+  }
+}
+
+function enterHiddenMode () {
+  patchShowMethods()
+  hiddenMode = true
+  if (process.platform === 'darwin' && app.dock) app.dock.hide()
+}
+
+// safety net: if a window becomes visible some other way, hide it again right away
+function keepHidden () {
+  if (!hiddenMode) return
+  const Win = BaseWindow || BrowserWindow
+  for (const win of Win.getAllWindows()) {
+    if (win.isDestroyed() || !win.isVisible()) continue
+    if (!suppressed.has(win)) suppressed.set(win, { maximize: win.isMaximized() })
+    win.hide()
+  }
+}
+
+function revealWindows () {
+  if (!hiddenMode) return focusWindows()
+  hiddenMode = false
+  if (process.platform === 'darwin' && app.dock) app.dock.show()
+  for (const [win, intent] of suppressed) {
+    if (win.isDestroyed()) continue
+    win.show()
+    if (intent.maximize) win.maximize()
+    if (intent.fullScreen) win.setFullScreen(true)
+  }
+  suppressed.clear()
+  debug(`Background: showing ${currentWalletLabel()}`)
+  writeLive(true)
+  focusWindows()
+}
+
+// "To the background": hide the window, Exodus keeps running (and syncing)
+function hideToBackground () {
+  if (hiddenMode) return
+  const Win = BaseWindow || BrowserWindow
+  const visible = Win.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible())
+  enterHiddenMode()
+  for (const win of visible) {
+    suppressed.set(win, { maximize: win.isMaximized() })
+    win.hide()
+  }
+  debug(`Background: ${currentWalletLabel()} now keeps running invisibly`)
+  writeLive(true)
+}
+
+function readLive (dir) {
+  const live = readJson(path.join(dir, LIVE_FILE))
+  if (!live || typeof live.at !== 'number' || Date.now() - live.at > LIVE_FRESH_MS) return null
+  return live
+}
+
+let liveStatus = { state: 'starting' }
+let liveWritten = ''
+let liveWrittenAt = 0
+function writeLive (force) {
+  const data = { pid: process.pid, hidden: hiddenMode, ...liveStatus }
+  const key = JSON.stringify(data)
+  if (!force && key === liveWritten && Date.now() - liveWrittenAt < 10 * 1000) return
+  liveWritten = key
+  liveWrittenAt = Date.now()
+  try { writeJson(path.join(currentDir(), LIVE_FILE), { ...data, at: Date.now() }) } catch (e) {}
+}
+
+// file contents: until when not to start in the background (ms since 1970)
+function pauseBackground (dir, ms = PAUSE_MS) {
+  try { fs.writeFileSync(path.join(dir, PAUSE_FILE), String(Date.now() + ms)) } catch (e) {}
+}
+function resumeBackground (dir) {
+  try { fs.unlinkSync(path.join(dir, PAUSE_FILE)) } catch (e) {}
+}
+function isPaused (dir) {
+  try { return Number(fs.readFileSync(path.join(dir, PAUSE_FILE), 'utf8')) > Date.now() } catch (e) { return false }
+}
+
+// runs only in visible windows: starts every not-yet-running wallet invisibly alongside
+function ensureBackground () {
+  if (hiddenMode || !uiContents || uiContents.isDestroyed()) return
+  if (readSettings().backgroundSync === false) return
+  for (const w of walletDirs()) {
+    if (w.external || isRunning(w.dir) || !hasWallet(w.dir) || exists(path.join(w.dir, RESTORE_MARKER)) || isPaused(w.dir)) continue
+    // several visible windows check at the same time – whoever starts first records it in the wallet
+    const claim = path.join(w.dir, BG_CLAIM_FILE)
+    try { if (Date.now() - fs.statSync(claim).mtimeMs < BG_RETRY_MS) continue } catch (e) {}
+    try { fs.writeFileSync(claim, String(process.pid)) } catch (e) { continue }
+    debug(`Background: starting ${w.isStandard ? standardLabel() : w.name} invisibly`)
+    launch(w.dir, { hidden: true })
+  }
+}
+
+// runs only in hidden instances: quit when there's no visible Exodus window (or when switched off)
+let lonelySince = 0
+function backgroundWatchdog () {
+  if (!hiddenMode) { lonelySince = 0; return }
+  if (readSettings().backgroundSync === false) {
+    debug('Background: switched off – quitting')
+    return app.quit()
+  }
+  const visible = walletDirs().some((w) => {
+    if (isCurrent(w.dir) || !lockAlive(w.dir)) return false
+    const live = readLive(w.dir)
+    return live && !live.hidden
+  })
+  if (visible) { lonelySince = 0; return }
+  if (!lonelySince) { lonelySince = Date.now(); return }
+  if (Date.now() - lonelySince > 30 * 1000) {
+    debug('Background: no Exodus window open anymore – quitting')
+    app.quit()
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Renaming the wallet in its own window: the folder is in use as long as this process
+// runs. A small PowerShell script waits until Exodus has quit, renames, and reopens.
 // ---------------------------------------------------------------------------------------------
 
 const RENAME_HELPER_PS = `
@@ -475,7 +669,7 @@ try { Wait-Process -Id ([int]$env:XW_PID) -Timeout 60 -ErrorAction SilentlyConti
 for ($i = 0; $i -lt 60; $i++) {
   try {
     if ($from.ToLower() -eq $to.ToLower()) {
-      $tmp = $to + '.umbenennen'
+      $tmp = $to + '.renaming'
       Move-Item -LiteralPath $from -Destination $tmp -ErrorAction Stop
       Move-Item -LiteralPath $tmp -Destination $to -ErrorAction Stop
     } else {
@@ -494,7 +688,7 @@ if ($env:XW_REOPEN -eq '1') {
 const RENAME_HELPER_SH = `
 i=0
 while [ $i -lt 60 ]; do
-  if [ ! -e "$XW_LOCK" ]; then break; fi
+  if [ ! -L "$XW_LOCK" ] && [ ! -e "$XW_LOCK" ]; then break; fi
   i=$((i+1)); sleep 0.5
 done
 ok=0
@@ -517,8 +711,8 @@ function renameCurrentAfterExit (from, to, reopen) {
     child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', RENAME_HELPER_PS],
       { detached: true, stdio: 'ignore', env, windowsHide: true })
   } else {
-    // No lockfile-wait id on posix; wait for the folder's Chromium lockfile to disappear instead
-    env.XW_LOCK = path.join(from, 'lockfile')
+    // No wait-by-pid on posix; wait for Exodus' single-instance lock (a symlink) to disappear instead
+    env.XW_LOCK = path.join(from, 'SingletonLock')
     child = spawn('sh', ['-c', RENAME_HELPER_SH], { detached: true, stdio: 'ignore', env })
   }
   child.unref()
@@ -526,8 +720,8 @@ function renameCurrentAfterExit (from, to, reopen) {
 
 function renameFolder (from, to) {
   if (norm(from) === norm(to)) {
-    const tmp = to + '.umbenennen'
-    fs.renameSync(from, tmp) // nur Groß-/Kleinschreibung geändert
+    const tmp = to + '.renaming'
+    fs.renameSync(from, tmp) // only case changed
     fs.renameSync(tmp, to)
   } else {
     fs.renameSync(from, to)
@@ -535,7 +729,7 @@ function renameFolder (from, to) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Kontostand- und Adress-Cache (liest über Exodus' eigene Selektoren/API in der Oberfläche)
+// Balance and address cache (reads via Exodus' own selectors/API in the UI)
 // ---------------------------------------------------------------------------------------------
 
 const SNAPSHOT_JS = `(() => {
@@ -543,7 +737,7 @@ const SNAPSHOT_JS = `(() => {
     const s = globalThis.selectors, store = globalThis.store
     if (!s || !store || !s.fiatBalances) return { error: 'no-globals' }
     const st = store.getState()
-    // Sprache/Währung zuerst: stehen schon fest, bevor die Kontostände geladen sind
+    // Language/currency first: they're already set before the balances have loaded
     let language = null, currency = null
     try { language = s.locale.language(st) } catch (e) {}
     try { currency = s.locale.currency(st) } catch (e) {}
@@ -571,7 +765,7 @@ const SNAPSHOT_JS = `(() => {
       const data = typeof s.fiatBalances.data === 'function' ? s.fiatBalances.data(st) : null
       total = num(data && data.totals && data.totals.balance)
     }
-    // Frisch angelegte Wallet ohne Guthaben: Exodus liefert dann gar keine Portfolios – das ist 0, nicht "unbekannt"
+    // Freshly created wallet with no funds: Exodus then returns no portfolios at all – that's 0, not "unknown"
     if (total == null && typeof s.fiatBalances.loaded === 'function') total = 0
     return { total, currency, language, portfolios }
   } catch (e) {
@@ -579,10 +773,10 @@ const SNAPSHOT_JS = `(() => {
   }
 })()`
 
-// Empfangsadressen sind öffentlich; wir merken sie uns, damit man sie später kopieren kann, ohne die
-// Wallet zu öffnen. Exodus' Adress-API steckt nicht in einer globalen Variable, sondern wird per
-// React-Provider ("exodus"-Prop) an die Oberfläche gereicht – dort holen wir sie ab.
-// Hardware-Wallet-Portfolios (Trezor/Ledger) lassen wir aus, damit kein Gerät angesprochen wird.
+// Receive addresses are public; we remember them so they can be copied later without opening the
+// wallet. Exodus' address API isn't held in a global variable but is passed to the UI via a
+// React provider ("exodus" prop) – that's where we pick it up.
+// We skip hardware-wallet portfolios (Trezor/Ledger) so that no device is contacted.
 const ADDRESSES_JS = `(async () => {
   try {
     const s = globalThis.selectors, store = globalThis.store
@@ -614,7 +808,7 @@ const ADDRESSES_JS = `(async () => {
     let accounts = {}
     try { accounts = (s.walletAccounts.getEnabled && s.walletAccounts.getEnabled(st)) || {} } catch (e) {}
     let names = Array.isArray(accounts) ? accounts.map(String) : Object.keys(accounts)
-    // Zusätzlich alle Portfolios, für die Exodus Kontostände führt – falls getEnabled nicht alle liefert
+    // Additionally all portfolios for which Exodus keeps balances – in case getEnabled doesn't return them all
     try {
       const byAccount = (s.fiatBalances && typeof s.fiatBalances.byWalletAccount === 'function' && s.fiatBalances.byWalletAccount(st)) || {}
       for (const n of Object.keys(byAccount)) if (!names.includes(n)) names.push(n)
@@ -622,21 +816,21 @@ const ADDRESSES_JS = `(async () => {
     const lookup = (n) => { try { return Array.isArray(accounts) ? null : (accounts[n] || (s.walletAccounts.get && s.walletAccounts.get(st)[n])) } catch (e) { return null } }
     names = names.filter((n) => { const a = lookup(n); return !(a && (a.isHardware || a.source === 'ledger' || a.source === 'trezor')) })
     if (!names.length) names = ['exodus_0']
-    // Reihenfolge wie in Exodus: exodus_0, exodus_1, …
+    // Same order as in Exodus: exodus_0, exodus_1, …
     names.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
     let properName = null
     try { properName = s.walletAccounts.getProperName(st) } catch (e) {}
     const withTimeout = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 3000))])
     const out = []
-    // Portfolio außen, Coin innen – so bleiben die Adressen eines Portfolios in der Liste beieinander
+    // Portfolio outer, coin inner – this keeps a portfolio's addresses together in the list
     for (const wa of names) {
       for (const assetName of Object.keys(enabled).filter((n) => enabled[n])) {
         const asset = all[assetName]
         if (!asset) continue
         if (out.length >= 600) break
         try {
-          // Erst Exodus' Zwischenspeicher; für Portfolios, die man in Exodus noch nicht geöffnet hat, ist der
-          // leer – dann die Adresse direkt ableiten lassen (öffentlicher Schlüssel, kein Gerät bei Software-Wallets)
+          // First Exodus' cache; for portfolios not yet opened in Exodus it's
+          // empty – then derive the address directly (public key, no device for software wallets)
           let addr = await withTimeout(ex.addressProvider.getReceiveAddress({ assetName, walletAccount: wa, useCache: true }))
           if (addr == null) addr = await withTimeout(ex.addressProvider.getReceiveAddress({ assetName, walletAccount: wa }))
           let text = addr == null ? null : (typeof addr === 'string' ? addr : (addr.address || (typeof addr.toString === 'function' ? addr.toString() : null)))
@@ -660,9 +854,9 @@ const ADDRESSES_JS = `(async () => {
 
 const ADDRESSES_EVERY_MS = 5 * 60 * 1000
 
-// Coin-Mengen pro Portfolio und Asset – daraus werden Eingänge erkannt (Menge gestiegen = Eingang).
-// Der Fiat-Wert kommt aus Exodus' eigener Umrechnung (fiatBalances.byAssetSource), also genau der
-// Wert, den Exodus selbst anzeigt. Nur lesen – keine Seeds, keine Schlüssel, kein Netzwerk.
+// Coin amounts per portfolio and asset – incoming payments are detected from these (amount rose = incoming).
+// The fiat value comes from Exodus' own conversion (fiatBalances.byAssetSource), i.e. exactly the
+// value Exodus itself shows. Read only – no seeds, no keys, no network.
 const HOLDINGS_JS = `(() => {
   try {
     const s = globalThis.selectors, store = globalThis.store
@@ -715,16 +909,16 @@ const HOLDINGS_JS = `(() => {
   }
 })()`
 
-// Coin-Icons liefert Exodus selbst mit: src/res/deps/img/<asset>-<hash>.svg (z. B. bitcoin-c53be7.svg,
-// ach_ethereum_fbad19a6-02bb85.svg). Manche Coins haben zusätzlich ein kleines 18×18-Symbol unter
-// demselben Namen – wir nehmen das große 40×40-Sechseck, das Exodus in Listen zeigt.
+// Exodus ships the coin icons itself: src/res/deps/img/<asset>-<hash>.svg (e.g. bitcoin-c53be7.svg,
+// ach_ethereum_fbad19a6-02bb85.svg). Some coins additionally have a small 18×18 symbol under
+// the same name – we take the large 40×40 hexagon that Exodus shows in lists.
 const ICON_DIR = ['src', 'res', 'deps', 'img']
 let iconIndex = null
 function loadIconIndex () {
   iconIndex = new Map()
   const dir = path.join(app.getAppPath(), ...ICON_DIR)
   let files = []
-  try { files = fs.readdirSync(dir) } catch (e) { debug('Coin-Icons nicht gefunden: ' + e.message); return iconIndex }
+  try { files = fs.readdirSync(dir) } catch (e) { debug('Coin icons not found: ' + e.message); return iconIndex }
   for (const file of files) {
     const m = file.match(/^(.+)-[0-9a-f]{6}\.svg$/i)
     if (!m || /-sign$/i.test(m[1])) continue
@@ -738,19 +932,49 @@ function loadIconIndex () {
   return iconIndex
 }
 
-// Relativ zu src/static/exodus-prod.html – so lädt die Seitenleiste das Bild direkt aus Exodus
-function iconFor (assetName) {
-  const index = iconIndex || loadIconIndex()
-  const name = String(assetName || '').toLowerCase()
-  const file = index.get(name) || index.get(name.split('_')[0]) // Token auf anderer Chain → Icon des Coins
-  return file ? '../res/deps/img/' + file : null
+// Tokens that Exodus only picks up at runtime (e.g. XO Cash on Solana) have no icon in the app.
+// Exodus stores their icon as <data folder>/images/<asset>.svg and shows exactly that – so do we
+// (as a data: URL, because the file lies outside the app). Read only, no network.
+const CUSTOM_ICON_DIR = 'images'
+const customIcons = new Map()
+function customIconFor (dir, assetName) {
+  if (!dir || !/^[\w.-]+$/.test(String(assetName || ''))) return null
+  const file = path.join(dir, CUSTOM_ICON_DIR, assetName + '.svg')
+  try {
+    const mtime = fs.statSync(file).mtimeMs
+    const hit = customIcons.get(file)
+    if (hit && hit.mtime === mtime) return hit.data
+    const buf = fs.readFileSync(file)
+    const data = buf.length < 256 * 1024 && /<svg/i.test(buf.slice(0, 512).toString('utf8'))
+      ? 'data:image/svg+xml;base64,' + buf.toString('base64')
+      : null
+    customIcons.set(file, { mtime, data })
+    return data
+  } catch (e) {
+    return null
+  }
 }
 
-// Dasselbe Icon als data:-URL – für die Eingangs-Benachrichtigung, die nicht aus der Seite heraus lädt
+// Relative to src/static/exodus-prod.html – this way the sidebar loads the image directly from Exodus.
+// Same order as in Exodus: the asset's own icon, then the wallet's stored token icon
+// (dir, else this window), lastly the base coin's icon (token on another chain).
+function iconFor (assetName, dir) {
+  const index = iconIndex || loadIconIndex()
+  const name = String(assetName || '').toLowerCase()
+  const own = index.get(name)
+  if (own) return '../res/deps/img/' + own
+  const custom = customIconFor(dir, assetName) || customIconFor(currentDir(), assetName)
+  if (custom) return custom
+  const base = index.get(name.split('_')[0])
+  return base ? '../res/deps/img/' + base : null
+}
+
+// The same icon as a data: URL – for the incoming-payment notification, which doesn't load from the page
 const iconData = new Map()
-function iconDataFor (assetName) {
-  const rel = iconFor(assetName)
+function iconDataFor (assetName, dir) {
+  const rel = iconFor(assetName, dir)
   if (!rel) return null
+  if (rel.startsWith('data:')) return rel
   if (iconData.has(rel)) return iconData.get(rel)
   let data = null
   try {
@@ -763,22 +987,22 @@ function iconDataFor (assetName) {
 function updateCache (patch) {
   const file = path.join(currentDir(), CACHE_FILE)
   const next = { ...(readJson(file) || {}), ...patch }
-  try { writeJson(file, next) } catch (e) { console.error(TAG, 'Cache nicht gespeichert:', e.message) }
+  try { writeJson(file, next) } catch (e) { console.error(TAG, 'Cache not saved:', e.message) }
   return next
 }
 
-// Exodus-Einstellungen dieses Fensters; gehen mit jedem state() an die Seitenleiste
+// This window's Exodus settings; sent to the sidebar with every state()
 let uiCurrency = null
 function rememberLocale (res) {
   if (!res) return
   if (typeof res.language === 'string' && res.language && res.language !== uiLanguage) {
     uiLanguage = res.language
-    debug(`Exodus-Sprache: ${uiLanguage}`)
+    debug(`Exodus language: ${uiLanguage}`)
   }
   if (typeof res.currency === 'string' && res.currency) uiCurrency = res.currency
 }
 
-// Ergebnis nur loggen, wenn es sich ändert – sonst schreibt jedes Fenster alle 20 s eine Zeile
+// Only log the result when it changes – otherwise every window writes a line every 20 s
 const lastStatus = {}
 function logStatus (kind, status) {
   if (lastStatus[kind] === status) return
@@ -791,7 +1015,7 @@ async function runInUi (wc, code, timeoutMs) {
   try {
     return await Promise.race([wc.executeJavaScript(code), timeout])
   } catch (e) {
-    return { error: 'executeJavaScript fehlgeschlagen: ' + e.message }
+    return { error: 'executeJavaScript failed: ' + e.message }
   }
 }
 
@@ -800,10 +1024,10 @@ async function snapshotBalance (wc) {
   const res = await runInUi(wc, SNAPSHOT_JS, 4000)
   rememberLocale(res)
   if (!res || res.error || typeof res.total !== 'number' || !isFinite(res.total)) {
-    logStatus('Kontostand-Snapshot', 'kein Wert – ' + ((res && res.error) || 'total fehlt'))
+    logStatus('Balance snapshot', 'no value – ' + ((res && res.error) || 'total missing'))
     return null
   }
-  logStatus('Kontostand-Snapshot', 'ok')
+  logStatus('Balance snapshot', 'ok')
   return updateCache({
     total: res.total,
     currency: res.currency || null,
@@ -813,38 +1037,93 @@ async function snapshotBalance (wc) {
 }
 
 let lastAddressesAt = 0
-async function snapshotAddresses (wc, force) {
-  if (!wc || wc.isDestroyed()) return
-  if (!force && Date.now() - lastAddressesAt < ADDRESSES_EVERY_MS) return
+let addressesRun = null // query in progress – a second call simply waits alongside
+function snapshotAddresses (wc, force) {
+  if (!wc || wc.isDestroyed()) return Promise.resolve()
+  if (addressesRun) return addressesRun
+  if (!force && Date.now() - lastAddressesAt < ADDRESSES_EVERY_MS) return Promise.resolve()
+  addressesRun = fetchAddresses(wc).finally(() => { addressesRun = null })
+  return addressesRun
+}
+async function fetchAddresses (wc) {
   const res = await runInUi(wc, ADDRESSES_JS, 90000)
   if (!res || res.error || !Array.isArray(res.addresses)) {
-    logStatus('Adressen', 'keine – ' + ((res && res.error) || 'leer'))
+    logStatus('Addresses', 'none – ' + ((res && res.error) || 'empty'))
     return
   }
   lastAddressesAt = Date.now()
   const perPortfolio = {}
   for (const a of res.addresses) perPortfolio[a.portfolio || a.account] = (perPortfolio[a.portfolio || a.account] || 0) + 1
-  logStatus('Adressen', `ok (${res.addresses.length}) – ` + (Object.entries(perPortfolio).map(([p, n]) => `${p}: ${n}`).join(', ') || 'keine Portfolios'))
+  logStatus('Addresses', `ok (${res.addresses.length}) – ` + (Object.entries(perPortfolio).map(([p, n]) => `${p}: ${n}`).join(', ') || 'no portfolios'))
   if (res.addresses.length) updateCache({ addresses: res.addresses, addressesAt: new Date().toISOString() })
 }
 
 // ---------------------------------------------------------------------------------------------
-// Eingänge („Geld eingegangen“): Jedes Fenster beobachtet die Coin-Mengen seiner eigenen Wallet. Steigt
-// eine, legt es ein Ereignis in Exodus-Wallets\.eingaenge ab. Gezeigt wird es nur vom gerade fokussierten
-// Fenster und nie von dem der empfangenden Wallet selbst – dort zeigt Exodus den Eingang ja selbst an.
+// Incoming payments ("money received"): each window watches the coin amounts of its own wallet. When one
+// rises, it drops an event into Exodus-Wallets\.incoming. It's shown only by the currently focused
+// window and never by that of the receiving wallet itself – there Exodus shows the incoming payment anyway.
 // ---------------------------------------------------------------------------------------------
 
-const HOLDINGS_EVERY_MS = 4000
-const RECEIVED_WARMUP_MS = 30 * 1000 // direkt nach dem Entsperren lädt und synchronisiert Exodus noch
-const RECEIVED_DROP_MS = 20 * 1000 // eine gesunkene Menge gilt erst, wenn sie so lange bleibt (kein Lade-Zwischenstand)
-const RECEIVED_KEEP_MS = 10 * 60 * 1000
-const eventsDir = () => path.join(profilesRoot(), '.eingaenge') // Punkt: taucht nicht als Wallet auf
+// Wallet state from Exodus' own state: locked (password), onboarding (no wallet yet),
+// restoring (restoringAssets = coins still being loaded), balances loaded.
+// It also counts how often Exodus itself plays receive.wav in this window: Exodus plays the
+// sound on every incoming payment in every window, even hidden – then our card stays silent (no double sound).
+const STATUS_JS = `(() => {
+  try {
+    const store = globalThis.store, s = globalThis.selectors
+    if (!store) return { error: 'no-store' }
+    if (!globalThis.__xwReceiveSounds) {
+      globalThis.__xwReceiveSounds = { n: 0 }
+      const play = HTMLMediaElement.prototype.play
+      HTMLMediaElement.prototype.play = function () {
+        try { if (/receive\\.wav$/i.test(String(this.src || ''))) globalThis.__xwReceiveSounds.n++ } catch (e) {}
+        return play.apply(this, arguments)
+      }
+    }
+    const st = store.getState()
+    const a = st.application || {}
+    const r = st.restoringAssets || {}
+    let fiatLoaded = null
+    try { if (s && s.fiatBalances && typeof s.fiatBalances.loaded === 'function') fiatLoaded = !!s.fiatBalances.loaded(st) } catch (e) {}
+    return {
+      loading: !!a.isLoading,
+      locked: !!a.isLocked,
+      walletExists: a.walletExists !== false,
+      restoring: !!a.isRestoring,
+      restoringLeft: r.loaded && r.data ? Object.keys(r.data).length : 0,
+      fiatLoaded,
+      sounds: globalThis.__xwReceiveSounds.n,
+    }
+  } catch (e) {
+    return { error: String((e && e.message) || e) }
+  }
+})()`
+const SOUNDS_JS = '(globalThis.__xwReceiveSounds && globalThis.__xwReceiveSounds.n) || 0'
 
-// Letzte Mengen pro "asset|portfolio" – nur im Speicher: das erste Einlesen ist der Ausgangsstand
+// starting → onboarding (Exodus asks: new or restore) → locked (password) → loading →
+// restoring (coins are being loaded) → syncing (balances still missing) → ready
+function statusFrom (res) {
+  if (!res || res.error) return { state: 'starting' }
+  if (!res.walletExists) return { state: 'onboarding' }
+  if (res.locked) return { state: 'locked' }
+  if (res.loading) return { state: 'loading' }
+  if (res.restoring || res.restoringLeft > 0) return { state: 'restoring', left: res.restoringLeft }
+  if (res.fiatLoaded === false) return { state: 'syncing' }
+  return { state: 'ready' }
+}
+
+const HOLDINGS_EVERY_MS = 3000
+const RECEIVED_WARMUP_MS = 30 * 1000 // right after unlocking Exodus is still loading and syncing
+const RECEIVED_DROP_MS = 20 * 1000 // a dropped amount only counts once it stays that way this long (not a loading interim state)
+const RECEIVED_KEEP_MS = 10 * 60 * 1000
+const eventsDir = () => path.join(profilesRoot(), '.incoming') // leading dot: doesn't show up as a wallet
+
+// Last amounts per "asset|portfolio" – in memory only: the first read is the baseline
 let holdingsBase = null
 let holdingsSince = 0
 let holdingsBusy = false
 const holdingsLow = new Map()
+let soundsSeen = null // how often Exodus has played receive.wav here, as far as already assigned to an incoming payment
 
 const focusedHere = () => !!(BaseWindow && typeof BaseWindow.getFocusedWindow === 'function' && BaseWindow.getFocusedWindow())
 
@@ -854,15 +1133,15 @@ async function checkHoldings (wc) {
   try {
     const res = await runInUi(wc, HOLDINGS_JS, 3000)
     if (!res || res.error || !Array.isArray(res.holdings)) {
-      logStatus('Eingänge', 'kein Wert – ' + ((res && res.error) || 'leer'))
+      logStatus('Incoming', 'no value – ' + ((res && res.error) || 'empty'))
       return
     }
-    logStatus('Eingänge', 'ok')
+    logStatus('Incoming', 'ok')
     const now = Date.now()
     const cur = new Map(res.holdings.map((h) => [h.asset + '|' + h.account, h]))
     const amounts = () => new Map([...cur].map(([k, h]) => [k, h.amount]))
     if (!holdingsBase) holdingsSince = now
-    // Erstes Einlesen und Aufwärmphase: nur den Stand merken, nichts melden
+    // First read and warmup phase: only remember the state, don't report anything
     if (!holdingsBase || now - holdingsSince < RECEIVED_WARMUP_MS) {
       holdingsBase = amounts()
       return
@@ -888,40 +1167,48 @@ async function checkHoldings (wc) {
       else holdingsBase.delete(k)
     }
     if (!received.length) return
-    // Kontostand sofort speichern: die anderen Fenster lesen ihn, sobald sie die Karte zeigen, und lassen den Saldo rollen
+    // Save the balance immediately: the other windows read it as soon as they show the card, and roll the balance
     await snapshotBalance(wc)
-    // Dieses Fenster ist vorne? Dann zeigt Exodus den Eingang selbst – kein zweites Fenster soll ihn noch melden
-    if (focusedHere()) { debug(`Eingang erkannt (${currentWalletLabel()}), Fenster ist vorne – Exodus zeigt ihn selbst`); return }
+    // Has Exodus already played receive.wav here itself (even in a hidden window)? Wait briefly –
+    // Exodus' sound and the new balance don't always arrive at the same moment. Then the card stays silent.
+    await sleep(1500)
+    const n = await runInUi(wc, SOUNDS_JS, 1000)
+    const exodusSound = typeof n === 'number' && soundsSeen != null && n > soundsSeen
+    if (typeof n === 'number') soundsSeen = n
+    // This window is in front? Then Exodus shows the incoming payment itself – no second window should report it too
+    if (focusedHere()) { debug(`Incoming payment detected (${currentWalletLabel()}), window is in front – Exodus shows it itself`); return }
     const me = walletDirs().find((x) => isCurrent(x.dir))
     fs.mkdirSync(eventsDir(), { recursive: true })
     for (const { h, diff } of received) {
       const price = h.fiat != null && h.amount > 0 ? h.fiat / h.amount : null
       const ev = {
+        type: 'received',
         id: now.toString(36) + '-' + crypto.randomBytes(4).toString('hex'),
         at: now,
         dir: currentDir(),
+        exodusSound, // Exodus has already played the sound → card without sound
         walletId: me && !me.external ? me.id : null,
         wallet: currentWalletLabel(),
         asset: h.asset,
         ticker: h.ticker,
         coin: h.label,
         amount: diff,
-        value: price != null ? diff * price : null, // Fiat-Wert zum Zeitpunkt des Eingangs
+        value: price != null ? diff * price : null, // fiat value at the time of the incoming payment
         currency: res.currency || uiCurrency || null,
         portfolio: res.portfolioCount > 1 ? h.portfolio : null,
       }
       writeJson(path.join(eventsDir(), ev.id + '.json'), ev)
-      debug(`Eingang erkannt: ${ev.wallet} – ${ev.ticker}`)
+      debug(`Incoming payment detected: ${ev.wallet} – ${ev.ticker}`)
     }
   } catch (e) {
-    debug('Eingangs-Fehler: ' + e.message)
+    debug('Incoming-payment error: ' + e.message)
   } finally {
     holdingsBusy = false
   }
 }
 
-// Exodus' eigene Ton-Einstellung dieses Fensters (Einstellungen → Töne): Exodus spielt receive.wav nur,
-// wenn "sounds.all.enabled" an ist, und mit der Lautstärke "sounds.all.volume" – genauso machen wir es
+// Exodus' own sound setting for this window (Settings → Sounds): Exodus plays receive.wav only
+// when "sounds.all.enabled" is on, and at the volume "sounds.all.volume" – we do exactly the same
 const SOUND_JS = `(() => {
   try {
     const c = globalThis.store && globalThis.store.getState().config
@@ -933,7 +1220,7 @@ const SOUND_JS = `(() => {
   }
 })()`
 
-// Läuft in jedem Fenster jede Sekunde, tut aber nur etwas, solange dieses Fenster vorne ist
+// Runs in every window every second, but only does something while this window is in front
 let lastPrune = 0
 let delivering = false
 async function deliverReceived () {
@@ -954,15 +1241,16 @@ async function deliverReceived () {
       if (!ev || typeof ev.at !== 'number' || !ev.dir || now - ev.at > RECEIVED_KEEP_MS) continue
       open.push({ ev, done })
     }
-    // Älteste zuerst – die neueste liegt dann oben im Stapel
+    // Oldest first – the newest then ends up on top of the stack
     open.sort((a, b) => a.ev.at - b.ev.at)
     let sound = null
     for (const { ev, done } of open) {
-      // Wer die .done-Datei anlegt, zeigt den Eingang: Karte und Ton kommen so nur in einem Fenster
+      // Whoever creates the .done file shows the incoming payment: card and sound thus come in only one window
       try { fs.closeSync(fs.openSync(done, 'wx')) } catch (e) { continue }
-      // Die eigene Wallet: Exodus hat ihn in diesem Fenster schon selbst gezeigt – nur als erledigt markieren
-      if (isCurrent(ev.dir)) continue
-      if (!sound) sound = await runInUi(wc, SOUND_JS, 1000)
+      // The own wallet: Exodus has already shown the incoming payment in this window itself – just mark
+      // it as done. "Setup finished", on the other hand, is shown by the own window too (that's what you're waiting for there).
+      if (isCurrent(ev.dir) && ev.type !== 'ready') continue
+      if (!sound && ev.type !== 'ready') sound = await runInUi(wc, SOUND_JS, 1000)
       if (!sound || sound.error) sound = { on: true, volume: 1 }
       const w = walletDirs().find((x) => norm(x.dir) === norm(ev.dir))
       if (wc.isDestroyed()) return
@@ -971,7 +1259,7 @@ async function deliverReceived () {
         walletId: w && !w.external ? w.id : ev.walletId,
         wallet: w ? (w.isStandard ? standardLabel() : w.name) : ev.wallet,
         avatar: avatarFor(ev.dir),
-        icon: iconDataFor(ev.asset),
+        icon: ev.asset ? iconDataFor(ev.asset, ev.dir) : null,
         hidden: !!readSettings().hideBalances,
         language: uiLanguage,
         sound,
@@ -990,13 +1278,92 @@ async function deliverReceived () {
   }
 }
 
+function writeEvent (ev) {
+  fs.mkdirSync(eventsDir(), { recursive: true })
+  writeJson(path.join(eventsDir(), ev.id + '.json'), ev)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Setting up new wallets: After "Create", "Restore with 12 words" or "Import old
+// folder" the wallet has to stay open for a while until Exodus has loaded everything. The SETUP_FILE
+// marker stays in the data folder that whole time; it's done when Exodus is no longer restoring, the
+// balances are loaded, and we've saved balance and addresses once. Then a
+// card reports "ready" – in the focused window, also in the wallet's own window.
+// ---------------------------------------------------------------------------------------------
+
+const SETUP_FILE = 'wallet-switcher-setup.json'
+let readySince = 0
+let settingUp = false
+function markSetup (dir, kind) {
+  try { writeJson(path.join(dir, SETUP_FILE), { kind, since: new Date().toISOString() }) } catch (e) {}
+}
+
+async function trackSetup (wc) {
+  const file = path.join(currentDir(), SETUP_FILE)
+  if (settingUp || !exists(file)) return
+  if (liveStatus.state !== 'ready') { readySince = 0; return }
+  if (!readySince) readySince = Date.now()
+  if (Date.now() - readySince < 6000) return // stable at "ready" for a few seconds
+  settingUp = true
+  try {
+    // Save addresses and balance once, completely – only then is everything really there
+    if (!lastAddressesAt) {
+      writeLive(true)
+      await snapshotAddresses(wc, true)
+      if (!lastAddressesAt) return
+    }
+    if (!(await snapshotBalance(wc))) return
+    const setup = readJson(file) || {}
+    try { fs.unlinkSync(file) } catch (e) {}
+    updateCache({ setupDoneAt: new Date().toISOString() })
+    const me = walletDirs().find((x) => isCurrent(x.dir))
+    const now = Date.now()
+    writeEvent({
+      type: 'ready',
+      id: now.toString(36) + '-' + crypto.randomBytes(4).toString('hex'),
+      at: now,
+      dir: currentDir(),
+      walletId: me && !me.external ? me.id : null,
+      wallet: currentWalletLabel(),
+      kind: setup.kind || null,
+    })
+    debug(`Setup finished: ${currentWalletLabel()}`)
+  } catch (e) {
+    debug('Setup error: ' + e.message)
+  } finally {
+    settingUp = false
+    writeLive(true)
+  }
+}
+
+// Every 3 s: wallet state (for the heartbeat and sidebar), then check for incoming payments
+let ticking = false
+async function tick (wc) {
+  if (!wc || wc.isDestroyed() || ticking) return
+  ticking = true
+  try {
+    const res = await runInUi(wc, STATUS_JS, 2000)
+    if (res && typeof res.sounds === 'number' && soundsSeen == null) soundsSeen = res.sounds
+    const next = statusFrom(res)
+    // During a new wallet's first address query: "saving addresses"
+    liveStatus = settingUp && next.state === 'ready' ? { state: 'addresses' } : next
+    writeLive()
+    if (next.state === 'ready' || next.state === 'starting') await checkHoldings(wc)
+    // Locked or reloading: forget the state – otherwise its reappearance would look like an incoming payment
+    else holdingsBase = null
+    trackSetup(wc).catch((e) => debug('Setup error: ' + e.message))
+  } finally {
+    ticking = false
+  }
+}
+
 let uiContents = null
 let snapshotTimer = null
-let holdingsTimer = null
+let tickTimer = null
 function rememberUi (wc) {
   if (uiContents === wc) return
   uiContents = wc
-  debug(`Exodus-Oberfläche erkannt – Kontostand wird alle ${SNAPSHOT_EVERY_MS / 1000} s gespeichert`)
+  debug(`Exodus UI detected – balance saved every ${SNAPSHOT_EVERY_MS / 1000} s` + (hiddenMode ? ' (background)' : ''))
   wc.once('destroyed', () => { if (uiContents === wc) uiContents = null })
   if (!snapshotTimer) {
     snapshotTimer = setInterval(async () => {
@@ -1005,24 +1372,24 @@ function rememberUi (wc) {
       if (ok) snapshotAddresses(uiContents, false)
     }, SNAPSHOT_EVERY_MS)
   }
-  if (!holdingsTimer) holdingsTimer = setInterval(() => checkHoldings(uiContents), HOLDINGS_EVERY_MS)
-  // Neue Oberfläche (z. B. nach Neuladen): Ausgangsstand neu einlesen
+  if (!tickTimer) tickTimer = setInterval(() => tick(uiContents), HOLDINGS_EVERY_MS)
+  // New UI (e.g. after a reload): re-read the baseline
   holdingsBase = null
   snapshotBalance(wc)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Einstellungen (gelten für alle Wallets)
+// Settings (apply to all wallets)
 // ---------------------------------------------------------------------------------------------
 
 function readSettings () {
-  return { hideBalances: false, startWallet: 'standard', standardName: null, ...(readJson(path.join(profilesRoot(), SETTINGS_FILE)) || {}) }
+  return { hideBalances: false, startWallet: 'standard', standardName: null, backgroundSync: true, ...(readJson(globalFile(SETTINGS_FILE)) || {}) }
 }
 
 function writeSettings (patch) {
   const next = { ...readSettings(), ...patch }
   fs.mkdirSync(profilesRoot(), { recursive: true })
-  writeJson(path.join(profilesRoot(), SETTINGS_FILE), next)
+  writeJson(globalFile(SETTINGS_FILE), next)
   return next
 }
 
@@ -1043,16 +1410,16 @@ function buildState () {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Aktionen der Seitenleiste
+// Sidebar actions
 // ---------------------------------------------------------------------------------------------
 
 async function closeOtherWallet (w) {
   if (isCurrent(w.dir)) throw new Error(t('cannotCloseCurrent'))
   if (!isRunning(w.dir)) return
+  pauseBackground(w.dir) // otherwise background sync would restart it right away
   sendCommand(w.dir, 'quit')
-  const lock = path.join(w.dir, 'lockfile')
-  if (!(await waitUntil(() => !exists(lock), 30000))) throw new Error(t('closeTimeout'))
-  await sleep(800) // Nebenprozesse (GPU, Renderer) geben ihre Dateien kurz nach dem Hauptprozess frei
+  if (!(await waitUntil(() => !lockAlive(w.dir), 30000))) throw new Error(t('closeTimeout'))
+  await sleep(800) // subprocesses (GPU, renderer) release their files shortly after the main process
 }
 
 const api = {
@@ -1065,16 +1432,21 @@ const api = {
     const switchTo = !!(options && options.switchTo)
     const w = findWallet(id)
     if (isCurrent(w.dir)) return { alreadyHere: true }
-    // Wiederherstellung wurde abgebrochen? Dann wieder direkt mit der 12-Wörter-Eingabe starten.
+    // Restoration was aborted? Then start directly with the 12-word entry again.
     if (!hasWallet(w.dir) && exists(path.join(w.dir, RESTORE_MARKER))) fs.writeFileSync(path.join(w.dir, RESTORE_FLAG), '')
+    resumeBackground(w.dir) // opened again → may run along in the background again too
     const wasRunning = isRunning(w.dir)
+    // If it's running invisibly in the background, the restart (Exodus' "second-instance") brings its window to the front
     launch(w.dir)
     if (switchTo) setTimeout(() => app.quit(), 1500)
     return { launched: true, wasRunning }
   },
 
+  // Explicitly closed: stays closed (not even in the background) until it's opened again
   async close (event, id) {
-    await closeOtherWallet(findWallet(id))
+    const w = findWallet(id)
+    await closeOtherWallet(w)
+    pauseBackground(w.dir, 365 * 24 * 60 * 60 * 1000)
     return true
   },
 
@@ -1088,18 +1460,19 @@ const api = {
       fs.writeFileSync(path.join(dir, RESTORE_MARKER), '')
       fs.writeFileSync(path.join(dir, RESTORE_FLAG), '')
     }
+    markSetup(dir, restore ? 'restore' : 'create')
     launch(dir)
     return { id: 'p:' + name, name }
   },
 
-  // options.close: offene Wallet dafür schließen; options.reopen: danach wieder öffnen
+  // options.close: close an open wallet for this; options.reopen: reopen it afterward
   async rename (event, id, rawName, options) {
     const close = !!(options && options.close)
     const reopen = !!(options && options.reopen)
     const w = findWallet(id)
     if (w.external) throw new Error(t('cannotRename'))
 
-    // Der Standard-Ordner (%APPDATA%\Exodus) bleibt, wo er ist – umbenannt wird nur die Anzeige
+    // The default folder (%APPDATA%\Exodus) stays where it is – only the display name is renamed
     if (w.isStandard) {
       const raw = String(rawName == null ? '' : rawName).trim()
       const name = raw ? validateName(raw, { displayOnly: true }) : null
@@ -1109,6 +1482,7 @@ const api = {
 
     const name = validateName(rawName, { allowSameAs: w.name })
     if (name === w.name) return { id: w.id, name }
+    pauseBackground(w.dir) // don't start in the background in the middle of renaming
     const target = path.join(profilesRoot(), name)
     const newId = 'p:' + name
     const settings = readSettings()
@@ -1131,13 +1505,14 @@ const api = {
     return { id: newId, name }
   },
 
-  // Nur in den Papierkorb – ein endgültiges Löschen gibt es bewusst nicht. Ohne 12 Wörter wäre das Geld weg.
+  // Only to the Recycle Bin – there's deliberately no permanent delete. Without the 12 words the money would be gone.
   async remove (event, id, confirmName, options) {
     const close = !!(options && options.close)
     const w = findWallet(id)
     if (w.isStandard || w.external) throw new Error(t('cannotDelete'))
     if (isCurrent(w.dir)) throw new Error(t('deleteCurrent'))
     if (String(confirmName == null ? '' : confirmName).trim() !== w.name) throw new Error(t('deleteConfirm'))
+    pauseBackground(w.dir)
     if (isRunning(w.dir)) {
       if (!close) throw new Error(t('deleteRunning'))
       await closeOtherWallet(w)
@@ -1147,7 +1522,7 @@ const api = {
     } catch (e) {
       throw new Error(t('trashFailed', (e && e.message) || String(e)))
     }
-    debug(`Wallet in den Papierkorb verschoben: ${w.name}`)
+    debug(`Wallet moved to the Recycle Bin: ${w.name}`)
     if (readSettings().startWallet === w.id) writeSettings({ startWallet: 'standard' })
     return { name: w.name }
   },
@@ -1173,11 +1548,11 @@ const api = {
 
   async addresses (event, id) {
     const w = findWallet(id)
-    // Für das eigene Fenster frisch holen – z. B. direkt nachdem ein Coin aktiviert wurde
+    // Fetch fresh for the own window – e.g. right after a coin was enabled
     if (isCurrent(w.dir) && uiContents) await snapshotAddresses(uiContents, true)
     const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
-    const addresses = (Array.isArray(cache.addresses) ? cache.addresses : []).map((a) => ({ ...a, icon: iconFor(a.asset) }))
-    // Alle Portfolios, die Exodus für diese Wallet kennt (aus dem Kontostand) – auch die ohne gespeicherte Adressen
+    const addresses = (Array.isArray(cache.addresses) ? cache.addresses : []).map((a) => ({ ...a, icon: iconFor(a.asset, w.dir) }))
+    // All portfolios Exodus knows for this wallet (from the balance) – including those without saved addresses
     const portfolioNames = (Array.isArray(cache.portfolios) ? cache.portfolios : []).map((p) => String(p.name))
     return { addresses, portfolioNames, updatedAt: cache.addressesAt || null }
   },
@@ -1204,7 +1579,7 @@ const api = {
       const label = w.isStandard ? standardLabel() : w.name
       const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
       for (const a of (Array.isArray(cache.addresses) ? cache.addresses : [])) {
-        out.push({ ...a, icon: iconFor(a.asset), walletId: w.id, wallet: label })
+        out.push({ ...a, icon: iconFor(a.asset, w.dir), walletId: w.id, wallet: label })
       }
     }
     return { addresses: out }
@@ -1224,7 +1599,7 @@ const api = {
     if (fs.statSync(file).size > 15 * 1024 * 1024) throw new Error(t('avatarTooLarge'))
     let img = nativeImage.createFromPath(file)
     if (img.isEmpty()) throw new Error(t('avatarInvalid'))
-    // Mittig quadratisch zuschneiden, dann verkleinern – rund dargestellt wird es in der Seitenleiste
+    // Crop to a centered square, then shrink – it's shown round in the sidebar
     const { width, height } = img.getSize()
     const side = Math.min(width, height)
     img = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side })
@@ -1254,7 +1629,7 @@ const api = {
     const file = path.join(app.getPath('desktop'), `Exodus - ${label.replace(/[\\/:*?"<>|]/g, '_')}.lnk`)
     const target = launcherPath()
     const icon = path.join(path.dirname(target), 'app.ico')
-    // Auch für Standard ausdrücklich --datadir: sonst würde die Verknüpfung zur Start-Wallet umgeleitet
+    // Explicitly --datadir even for Default: otherwise the shortcut would be redirected to the start wallet
     const ok = shell.writeShortcutLink(file, 'create', {
       target,
       args: ['--datadir', w.dir].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' '),
@@ -1274,17 +1649,29 @@ const api = {
   async settings (event, patch) {
     const next = {}
     if (patch && typeof patch.hideBalances === 'boolean') next.hideBalances = patch.hideBalances
-    return writeSettings(next)
+    if (patch && typeof patch.backgroundSync === 'boolean') next.backgroundSync = patch.backgroundSync
+    const res = writeSettings(next)
+    if (next.backgroundSync === true) setTimeout(ensureBackground, 500)
+    return res
+  },
+
+  // Hide the window of another open wallet – it keeps running and syncing
+  async hide (event, id) {
+    const w = findWallet(id)
+    if (isCurrent(w.dir)) throw new Error(t('notAllowed'))
+    if (!isRunning(w.dir)) throw new Error(t('notFound'))
+    sendCommand(w.dir, 'hide')
+    return true
   },
 }
 
 // ---------------------------------------------------------------------------------------------
-// Fenstertitel: "Exodus 26.8.27 – <Wallet-Name>", damit man die Fenster in Taskleiste und Alt+Tab
-// unterscheidet. Das Exodus-Hauptfenster ist ein BaseWindow (kein BrowserWindow), daher gibt es kein
-// "browser-window-created" – wir prüfen die Titel regelmäßig und hängen den Namen an.
+// Window title: "Exodus 26.8.27 – <wallet name>", so the windows can be told apart in the taskbar and Alt+Tab.
+// The Exodus main window is a BaseWindow (not a BrowserWindow), so there's no
+// "browser-window-created" – we check the titles regularly and append the name.
 // ---------------------------------------------------------------------------------------------
 
-// Die Wallet dieses Fensters ändert sich nicht, solange es läuft – einmal ermitteln genügt.
+// This window's wallet doesn't change while it's running – determining it once is enough.
 let currentWallet
 function currentWalletLabel () {
   if (currentWallet === undefined) currentWallet = walletDirs().find((x) => isCurrent(x.dir)) || null
@@ -1308,10 +1695,10 @@ function refreshWindowTitles () {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Anbindung an Exodus
+// Hooking into Exodus
 // ---------------------------------------------------------------------------------------------
 
-// Die Exodus-Oberfläche läuft in der Session "persist:main" (Ordner <Datenordner>\Partitions\main)
+// The Exodus UI runs in the "persist:main" session (folder <data folder>\Partitions\main)
 function isMainSession (ses) {
   try {
     const p = ses && ses.storagePath
@@ -1321,7 +1708,7 @@ function isMainSession (ses) {
   }
 }
 
-// Nur die Exodus-Oberfläche selbst (Hauptframe von exodus-prod.html) darf die Aktionen aufrufen
+// Only the Exodus UI itself (main frame of exodus-prod.html) may call the actions
 function isUiUrl (href) {
   try {
     const url = new URL(href)
@@ -1341,53 +1728,69 @@ function isTrustedSender (event) {
   }
 }
 
-// Kontostand speichern, sobald die Exodus-Oberfläche geladen ist – unabhängig davon, ob jemand die
-// Seitenleiste öffnet. Sonst sehen andere Fenster diese Wallet nie mit aktuellem Stand.
+// Save the balance as soon as the Exodus UI has loaded – regardless of whether anyone opens the
+// sidebar. Otherwise other windows would never see this wallet with a current balance.
 function watchUi (wc) {
   if (!wc || !isMainSession(wc.session)) return
   wc.on('did-finish-load', () => {
-    try { if (isUiUrl(wc.getURL())) rememberUi(wc) } catch (e) { debug('watchUi-Fehler: ' + e.message) }
+    try { if (isUiUrl(wc.getURL())) rememberUi(wc) } catch (e) { debug('watchUi error: ' + e.message) }
   })
 }
 
 const registered = new WeakSet()
 function registerPreload (ses) {
-  debug(`registerPreload aufgerufen, ses=${!!ses}, isMainSession=${isMainSession(ses)}`)
+  debug(`registerPreload called, ses=${!!ses}, isMainSession=${isMainSession(ses)}`)
   if (!ses || registered.has(ses) || !isMainSession(ses)) {
-    debug(`registerPreload abgebrochen: ses=${!!ses}, already=${registered.has(ses)}, isMain=${isMainSession(ses)}`)
+    debug(`registerPreload aborted: ses=${!!ses}, already=${registered.has(ses)}, isMain=${isMainSession(ses)}`)
     return
   }
   registered.add(ses)
-  debug(`PRELOAD Pfad: ${PRELOAD}`)
-  debug(`PRELOAD existiert: ${fs.existsSync(PRELOAD)}`)
+  debug(`PRELOAD path: ${PRELOAD}`)
+  debug(`PRELOAD exists: ${fs.existsSync(PRELOAD)}`)
   if (typeof ses.registerPreloadScript === 'function') {
     ses.registerPreloadScript({ type: 'frame', filePath: PRELOAD })
-    debug('registerPreloadScript() verwendet')
+    debug('using registerPreloadScript()')
   } else {
     ses.setPreloads([...ses.getPreloads(), PRELOAD])
-    debug('setPreloads() verwendet')
+    debug('using setPreloads()')
   }
-  debug(`Wallet-Seitenleiste aktiv (v${VERSION})`)
+  debug(`Wallet sidebar active (v${VERSION})`)
 }
 
 try {
   if (!redirectToStartWallet()) {
-    debug('Event-Handler werden registriert...')
+    // Started invisibly (background sync): don't even show Exodus' window
+    if (startedHidden) {
+      enterHiddenMode()
+      debug('Started in the background (no window)')
+    }
+    // Whoever opens a background wallet starts Exodus for its folder again – Exodus reports this to the
+    // running instance as "second-instance". Our handler runs before Exodus' own (which focuses the window).
+    app.on('second-instance', () => {
+      try { if (hiddenMode) revealWindows() } catch (e) { debug('Showing failed: ' + e.message) }
+    })
+    debug('Registering event handlers...')
     app.on('session-created', (ses) => {
-      debug('session-created Event')
-      try { registerPreload(ses) } catch (e) { debug('Fehler: ' + e.message) }
+      debug('session-created event')
+      try { registerPreload(ses) } catch (e) { debug('Error: ' + e.message) }
     })
     app.on('web-contents-created', (_event, wc) => {
-      debug('web-contents-created Event')
-      try { registerPreload(wc.session) } catch (e) { debug('Fehler: ' + e.message) }
-      try { watchUi(wc) } catch (e) { debug('Fehler: ' + e.message) }
+      debug('web-contents-created event')
+      try { registerPreload(wc.session) } catch (e) { debug('Error: ' + e.message) }
+      try { watchUi(wc) } catch (e) { debug('Error: ' + e.message) }
     })
     app.whenReady().then(() => {
-      setInterval(() => { try { refreshWindowTitles() } catch (e) { debug('Fenstertitel-Fehler: ' + e.message) } }, 1500)
-      setInterval(() => { checkCommands().catch((e) => debug('Befehl-Fehler: ' + e.message)) }, 1000)
-      setInterval(() => { deliverReceived().catch((e) => debug('Eingangs-Fehler: ' + e.message)) }, 1000)
+      setInterval(() => { try { refreshWindowTitles() } catch (e) { debug('Window-title error: ' + e.message) } }, 1500)
+      setInterval(() => { checkCommands().catch((e) => debug('Command error: ' + e.message)) }, 1000)
+      setInterval(() => { deliverReceived().catch((e) => debug('Incoming-payment error: ' + e.message)) }, 1000)
+      // Background sync
+      if (hiddenMode && process.platform === 'darwin' && app.dock) app.dock.hide()
+      setInterval(() => { try { keepHidden() } catch (e) {} }, 400)
+      setInterval(() => { try { if (uiContents) writeLive() } catch (e) {} }, 5000)
+      setInterval(() => { try { ensureBackground() } catch (e) { debug('Background error: ' + e.message) } }, BG_EVERY_MS)
+      setInterval(() => { try { backgroundWatchdog() } catch (e) { debug('Background error: ' + e.message) } }, 10 * 1000)
     })
-    debug('Event-Handler registriert')
+    debug('Event handlers registered')
 
     for (const [name, fn] of Object.entries(api)) {
       ipcMain.handle('exodus-wallets:' + name, async (event, ...args) => {
@@ -1402,7 +1805,14 @@ try {
     }
   }
 } catch (e) {
-  console.error(TAG, 'Seitenleiste konnte nicht geladen werden:', e)
+  console.error(TAG, 'Sidebar could not be loaded:', e)
 }
 
-module.exports = { VERSION, _test: { api, buildState, snapshotBalance, checkHoldings, deliverReceived, rememberUi } }
+module.exports = {
+  VERSION,
+  _test: {
+    api, buildState, snapshotBalance, checkHoldings, deliverReceived, rememberUi, tick, trackSetup, markSetup,
+    lockAlive, iconFor, ensureBackground, backgroundWatchdog, enterHiddenMode, revealWindows, hideToBackground, keepHidden,
+    isHidden: () => hiddenMode, live: () => liveStatus,
+  },
+}

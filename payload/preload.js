@@ -1,20 +1,20 @@
 'use strict'
 /*
- * Exodus Wallet-Seitenleiste – Oberfläche
+ * Exodus wallet sidebar – UI
  * ----------------------------------------
- * Läuft als zusätzliches Preload-Skript in der Exodus-Oberfläche, in einer eigenen isolierten
- * JavaScript-Welt (kein Zugriff auf Exodus-Interna, kein Node). Setzt links oben vor dem
- * Exodus-Logo einen Knopf, der die Wallet-Seitenleiste öffnet. Alle Aktionen laufen über main.js.
+ * Runs as an additional preload script in the Exodus UI, in its own isolated
+ * JavaScript world (no access to Exodus internals, no Node). Places a button top left in front
+ * of the Exodus logo that opens the wallet sidebar. All actions go through main.js.
  */
 {
   const { ipcRenderer } = require('electron')
 
-  // Debug via IPC an main.js senden
+  // Send debug output to main.js via IPC
   const debug = (msg) => {
     try { ipcRenderer.send('exodus-wallets:debug', msg) } catch (e) {}
   }
 
-  debug(`preload.js geladen, URL: ${location.href}`)
+  debug(`preload.js loaded, URL: ${location.href}`)
   debug(`protocol: ${location.protocol}, pathname: ${decodeURIComponent(location.pathname)}`)
 
   const isExodusUi = () => {
@@ -24,7 +24,7 @@
       debug(`isExodusUi() = ${result}`)
       return result
     } catch (e) {
-      debug(`isExodusUi() Fehler: ${e.message}`)
+      debug(`isExodusUi() error: ${e.message}`)
       return false
     }
   }
@@ -63,18 +63,22 @@
     list: svg('<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'),
     alert: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><path d="M12 16.2h.01"/>'),
     info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/>'),
+    layers: svg('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
   }
 
-  // Kopier-Icon, das sich beim Kopieren in ein Häkchen verwandelt (Handoff @xw:morph): Vorder- und
-  // Rückseite von ICON.copy plus ein Häkchen, das per stroke-dashoffset gezeichnet wird
+  // Icon of the "Ready" card in place of the coin icon: green circle with checkmark (data: URL, CSP-compliant)
+  const READY_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="#3ad29f" fill-opacity=".16" stroke="#3ad29f" stroke-width="1.5"/><path d="m13 20.5 5 5 9-10" fill="none" stroke="#3ad29f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+  // Copy icon that turns into a checkmark when copying (handoff @xw:morph): front and
+  // back of ICON.copy plus a checkmark drawn via stroke-dashoffset
   const MORPH = (size = 16) =>
     `<svg class="xw-morph" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
     '<rect class="xw-m-front" x="8" y="8" width="13" height="13" rx="2"/><path class="xw-m-back" d="M4 16V5a1 1 0 0 1 1-1h11"/>' +
     '<path class="xw-m-check" d="m5 12 5 5 9-10" pathLength="1"/></svg>'
 
-  // Farben kommen aus Exodus' eigenen Theme-Variablen (exodus.css, :root/.exodus-theme-*), damit die
-  // Seitenleiste jedes Exodus-Theme mitmacht. Die Fallbacks sind die Werte des Standard-Themes "origin".
-  // Akzent und Verlauf entsprechen .ex-button--default-color und dem aktiven Nav-Strich (#00bfff).
+  // Colors come from Exodus' own theme variables (exodus.css, :root/.exodus-theme-*), so the
+  // sidebar follows every Exodus theme. The fallbacks are the values of the default theme "origin".
+  // Accent and gradient match .ex-button--default-color and the active nav stroke (#00bfff).
   const CSS = `
 .global-navigation__wrapper{padding-left:78px!important}
 #xw-root{
@@ -187,7 +191,7 @@
 #xw-root .xw-more:hover,#xw-root .xw-more.is-active{opacity:1;background:rgba(255,255,255,.07)}
 #xw-root .xw-more:focus-visible{outline:1px solid var(--xw-cyan);opacity:1}
 
-/* Die Zeile darf unter den ⋯-Knopf reichen (Knopf 30px + Abstand) – dort ist Platz */
+/* The row may extend under the ⋯ button (button 30px + gap) – there is room there */
 #xw-root .xw-ports{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;gap:4px;margin-right:-40px}
 #xw-root .xw-ports::-webkit-scrollbar{display:none}
 #xw-root .xw-ports.is-overflow{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
@@ -242,40 +246,40 @@
 #xw-root .xw-item .xw-avatar{transition:transform .25s var(--xw-ease)}
 #xw-root .xw-item:hover .xw-avatar{transform:scale(1.05)}
 
-/* Weniger Bewegung (Systemeinstellung). Panel, Sheet, Menü usw. regeln die neuen .xw-reduce-Varianten
-   unten (Klasse per syncReduce); hier bleiben nur die übrigen Druck-/Hover-Transforms. */
+/* Reduced motion (system setting). Panel, sheet, menu etc. are handled by the new .xw-reduce variants
+   below (class via syncReduce); only the remaining press/hover transforms stay here. */
 @media (prefers-reduced-motion:reduce){
   #xw-root .xw-icon:active,#xw-root .xw-more:active,#xw-toggle:active,
   #xw-root .xw-item:hover .xw-avatar,#xw-root .xw-fast{transform:none!important}
 }
 
-/* Exodus Multi Wallet – Motion (production). Variante 1A gewählt. Aus design_handoff_sidebar_motion/
-   xw-motion.prod.css übernommen; Reihenfolge beibehalten, Panel-Selektoren auf preload.js umgeschrieben. */
+/* Exodus Multi Wallet – Motion (production). Variant 1A chosen. Taken from design_handoff_sidebar_motion/
+   xw-motion.prod.css; order kept, panel selectors rewritten for preload.js. */
 
 /* ===== @xw:tokens ===== */
-/* Motion-Tokens – einmal in #xw-root ergänzen */
+/* Motion tokens – add once to #xw-root */
 #xw-root{
-  --xw-ease-out:cubic-bezier(.22,1,.36,1);     /* Standard: schnell rein, weich aus (= --xw-ease) */
-  --xw-ease-in:cubic-bezier(.4,0,1,1);         /* Ausblenden / Schließen */
-  --xw-ease-io:cubic-bezier(.65,0,.35,1);      /* Wege mit Start und Ziel (Sweep, Schweif) */
-  --xw-ease-back:cubic-bezier(.34,1.56,.64,1); /* kleiner Überschwinger (Häkchen, Punkt) */
+  --xw-ease-out:cubic-bezier(.22,1,.36,1);     /* Default: fast in, soft out (= --xw-ease) */
+  --xw-ease-in:cubic-bezier(.4,0,1,1);         /* Fade out / close */
+  --xw-ease-io:cubic-bezier(.65,0,.35,1);      /* Paths with start and end (sweep, trail) */
+  --xw-ease-back:cubic-bezier(.34,1.56,.64,1); /* Small overshoot (checkmark, dot) */
   --xw-d-fast:150ms;--xw-d-mid:220ms;--xw-d-slow:320ms;
-  --xw-hold:1800ms;                            /* Copied-Zustand ab Klick */
+  --xw-hold:1800ms;                            /* Copied state from click */
 }
-/* Gemeinsame Button-Mechanik: Pressed federt zurück */
+/* Shared button mechanics: pressed springs back */
 #xw-root .xw-btn{transition:color .2s,background .2s,border-color .2s,transform 240ms var(--xw-ease-back)}
 #xw-root .xw-btn:is(:active,.is-pressed){transform:scale(.98);transition-duration:.2s,.2s,.2s,90ms;transition-timing-function:ease,ease,ease,var(--xw-ease-out)}
 #xw-root .xw-cp{isolation:isolate}
 #xw-root .xw-cp-stack{display:grid;align-items:center;justify-items:center}
 #xw-root .xw-cp-a,#xw-root .xw-cp-b{grid-area:1/1;display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
 #xw-root .xw-cp .xw-cp-b svg{color:var(--xw-green)}
-/* Ring-Ebene (1,5px, per Maske auf den Rand beschränkt) */
+/* Ring layer (1.5px, limited to the border via mask) */
 #xw-root .xw-cp-fx{position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
 #xw-root .xw-cp-ring{position:absolute;inset:0;border-radius:inherit;background:linear-gradient(-90deg,rgba(58,210,159,.95),rgba(58,210,159,.6));opacity:0;transition:opacity 300ms var(--xw-ease-out)}
 #xw-root .xw-cp.is-copied .xw-cp-ring{opacity:1}
 
 /* ===== @xw:trail ===== */
-/* Variante A – Lichtschweif (gewählt) */
+/* Variant A – light trail (chosen) */
 #xw-root .xw-cp--trail .xw-cp-a,#xw-root .xw-cp--trail .xw-cp-b{transition:opacity 220ms var(--xw-ease-out),transform 320ms var(--xw-ease-out)}
 #xw-root .xw-cp--trail .xw-cp-b{opacity:0;transform:translateY(9px)}
 #xw-root .xw-cp--trail.is-copied .xw-cp-a{opacity:0;transform:translateY(-9px)}
@@ -293,7 +297,7 @@
 #xw-root.xw-reduce .xw-cp--trail.is-copied .xw-cp-ring{transition-delay:0ms}
 
 /* ===== @xw:morph ===== */
-/* Icon→Häkchen-Morph (hier für die Adresszeile genutzt) */
+/* Icon→checkmark morph (used here for the address row) */
 #xw-root .xw-morph{flex:none;overflow:visible}
 #xw-root .xw-morph>*{transform-box:fill-box;transform-origin:center}
 #xw-root .xw-m-front,#xw-root .xw-m-back{transition:opacity 180ms var(--xw-ease-out) 120ms,transform 280ms var(--xw-ease-out) 120ms}
@@ -311,7 +315,7 @@
 #xw-root.xw-reduce .xw-cp--morph .xw-cp-a,#xw-root.xw-reduce .xw-cp--morph .xw-cp-b{filter:none!important}
 
 /* ===== @xw:row ===== */
-/* Adresszeile: Tönung, Adresse → „Address copied“, Icon-Morph */
+/* Address row: tint, address → "Address copied", icon morph */
 #xw-root .xw-addr--cp:before{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(58,210,159,.07);box-shadow:inset 0 0 0 1px rgba(58,210,159,.14);opacity:0;pointer-events:none;transition:opacity 450ms var(--xw-ease-out)}
 #xw-root .xw-addr--cp.is-copied:before{opacity:1;transition-duration:150ms}
 #xw-root .xw-addr-sub{display:grid;margin-top:2px;overflow:hidden}
@@ -326,7 +330,7 @@
 #xw-root.xw-reduce .xw-addr--cp .xw-addr-text,#xw-root.xw-reduce .xw-addr-ok{transform:none!important}
 
 /* ===== @xw:menu ===== */
-/* ⋯-Menü: .is-open schaltet. Items bekommen style="--xw-i:0..n" */
+/* ⋯ menu: .is-open toggles it. Items get style="--xw-i:0..n" */
 #xw-root .xw-menu{position:absolute;z-index:6;top:40px;right:8px;width:250px;padding:6px;border-radius:10px;background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 14px 40px rgba(0,0,0,.55);transform-origin:top right;opacity:0;visibility:hidden;transform:scale(.97) translateY(-4px);pointer-events:none;transition:opacity 120ms var(--xw-ease-in),transform 120ms var(--xw-ease-in),visibility 0s 120ms}
 #xw-root .xw-menu.is-open{opacity:1;visibility:visible;transform:none;pointer-events:auto;transition:opacity 160ms var(--xw-ease-out),transform 200ms var(--xw-ease-out),visibility 0s}
 #xw-root .xw-menu-item{display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border-radius:6px;font-size:13px;text-align:left;color:rgba(255,255,255,.82);cursor:pointer;opacity:0;transform:translateY(-3px);transition:background .12s,color .12s,opacity 100ms,transform 100ms}
@@ -341,7 +345,7 @@
 #xw-root.xw-reduce .xw-menu,#xw-root.xw-reduce .xw-menu-item,#xw-root.xw-reduce .xw-more svg{transform:none!important;transition-delay:0s!important}
 
 /* ===== @xw:sheet ===== */
-/* Ansicht von rechts: .xw-view (Hauptliste) + .xw-sheet; Klasse .is-sheet auf dem Panel */
+/* View from the right: .xw-view (main list) + .xw-sheet; class .is-sheet on the panel */
 #xw-root .xw-view{flex:1;display:flex;flex-direction:column;min-height:0;transition:transform 260ms var(--xw-ease-io),opacity 260ms var(--xw-ease-io)}
 #xw-root .is-sheet>.xw-view{transform:translateX(-28px);opacity:.4;transition:transform 320ms var(--xw-ease-out),opacity 320ms var(--xw-ease-out)}
 #xw-root .xw-sheet{position:absolute;top:80px;left:0;right:0;bottom:0;z-index:4;display:flex;flex-direction:column;background:var(--xw-bg);box-shadow:-18px 0 40px rgba(0,0,0,0);transform:translateX(100%);visibility:hidden;transition:transform 260ms var(--xw-ease-io),box-shadow 260ms,visibility 0s 260ms}
@@ -354,14 +358,14 @@
 #xw-root.xw-reduce .is-sheet>.xw-sheet .xw-addr,#xw-root.xw-reduce .is-sheet>.xw-sheet .xw-addr-group{animation-name:xw-fade}
 
 /* ===== @xw:stagger ===== */
-/* Gestaffeltes Einblenden. Zeilen bekommen style="--xw-i:n"; Klasse .xw-anim auf dem Container neu setzen */
+/* Staggered fade-in. Rows get style="--xw-i:n"; re-apply class .xw-anim on the container */
 #xw-root .xw-anim>.xw-item,#xw-root .xw-anim>.xw-stag{animation:xw-in 280ms var(--xw-ease-out) both;animation-delay:calc(min(var(--xw-i,0),10) * 30ms + 90ms)}
 @keyframes xw-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
 @keyframes xw-fade{from{opacity:0}to{opacity:1}}
 #xw-root.xw-reduce .xw-anim>.xw-item,#xw-root.xw-reduce .xw-anim>.xw-stag{animation-name:xw-fade;animation-delay:0ms}
 
 /* ===== @xw:toast ===== */
-/* Hinweis-Toast: absolut im Panel, .is-show schaltet; .is-ok / .is-error wie früher .xw-notice */
+/* Notice toast: absolute in the panel, .is-show toggles it; .is-ok / .is-error like the former .xw-notice */
 #xw-root .xw-toast{position:absolute;left:24px;right:24px;bottom:84px;z-index:8;display:flex;align-items:center;gap:10px;padding:11px 14px 11px 16px;border-radius:8px;font-size:12.5px;color:var(--xw-text);background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 32px rgba(0,0,0,.5);overflow:hidden;opacity:0;visibility:hidden;transform:translateY(10px) scale(.98);pointer-events:none;transition:opacity 160ms var(--xw-ease-in),transform 160ms var(--xw-ease-in),visibility 0s 160ms}
 #xw-root .xw-toast:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--xw-grad)}
 #xw-root .xw-toast.is-ok:before{background:var(--xw-green)}
@@ -376,7 +380,7 @@
 #xw-root.xw-reduce .xw-toast:after{display:none}
 
 /* ===== @xw:chip ===== */
-/* Chip an/aus (Mehrfachauswahl) – Verlaufsrand als Pseudo-Ebene, damit er überblenden kann */
+/* Chip on/off (multi-select) – gradient border as a pseudo layer so it can cross-fade */
 #xw-root .xw-chip{position:relative;max-width:100%;padding:5px 13px;border-radius:15px;font-size:12px;font-weight:500;color:var(--xw-muted);background:rgba(255,255,255,.04);border:1px solid transparent;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 150ms,background 150ms,transform 220ms var(--xw-ease-back)}
 #xw-root .xw-chip:before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--xw-grad-soft);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity 150ms var(--xw-ease-in)}
 #xw-root .xw-chip:hover{color:#fff;background:rgba(255,255,255,.07)}
@@ -388,8 +392,8 @@
 #xw-root.xw-reduce .xw-chip,#xw-root.xw-reduce .xw-chip.is-on{transform:none!important;animation:none!important}
 
 /* ===== @xw:panel ===== */
-/* Panel öffnen. Mapping Prototyp → preload.js: .xw-open → #xw-root.xw-open, .xw-slide → #xw-panel,
-   .xw-backdrop → #xw-backdrop, .xw-toggle → #xw-toggle. Die !important-Abschirmung von preload.js bleibt. */
+/* Opening the panel. Mapping prototype → preload.js: .xw-open → #xw-root.xw-open, .xw-slide → #xw-panel,
+   .xw-backdrop → #xw-backdrop, .xw-toggle → #xw-toggle. The !important shielding of preload.js stays. */
 #xw-backdrop{opacity:0;pointer-events:none;transition:opacity 220ms var(--xw-ease-in)!important}
 #xw-root.xw-open #xw-backdrop{opacity:1;pointer-events:auto;transition:opacity 300ms var(--xw-ease-out)!important}
 #xw-panel{transform:translateX(-100%);visibility:hidden;transition:transform 220ms var(--xw-ease-in),box-shadow 220ms,visibility 0s 220ms!important}
@@ -404,7 +408,7 @@
 #xw-root.xw-reduce.xw-open #xw-panel{opacity:1;transition:opacity 200ms ease,visibility 0s!important}
 
 /* ===== @xw:roll ===== */
-/* Saldo-Update: alter Wert rollt raus, neuer rein; kurze Tönung nach oben/unten. Container .xw-roll */
+/* Balance update: old value rolls out, new one rolls in; brief up/down tint. Container .xw-roll */
 #xw-root .xw-roll{display:inline-grid;overflow:hidden;vertical-align:bottom}
 #xw-root .xw-roll>span{grid-area:1/1;white-space:nowrap}
 #xw-root .xw-roll-out{animation:xw-roll-out 220ms var(--xw-ease-in) both}
@@ -422,7 +426,7 @@
 @keyframes xw-fade-out{to{opacity:0}}
 
 /* ===== @xw:switch ===== */
-/* Wallet-Wechsel: Markierungsbalken, Status-Punkt springt mit einem Puls ein */
+/* Wallet switch: marker bar, status dot pops in with a pulse */
 #xw-root .xw-item:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;border-radius:2px;background:linear-gradient(180deg,var(--xw-cyan),var(--xw-violet));opacity:0;transform:scaleY(.2);transition:opacity 150ms var(--xw-ease-in),transform 150ms var(--xw-ease-in)}
 #xw-root .xw-item.is-current:before{opacity:1;transform:none;transition:opacity 200ms var(--xw-ease-out),transform 260ms var(--xw-ease-out)}
 #xw-root .xw-item.is-live .xw-avatar:after{animation:xw-dot 320ms var(--xw-ease-back) both}
@@ -437,7 +441,7 @@
 #xw-root.xw-reduce .xw-item.is-live .xw-avatar:before{animation:none}
 
 /* ===== @xw:delete ===== */
-/* Löschen bestätigen: Name tippen → Button „scharf“; falsche Eingabe → kurzes Schütteln + roter Rand */
+/* Confirm delete: type the name → button "armed"; wrong input → short shake + red border */
 #xw-root .xw-btn.is-danger[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 #xw-root .xw-btn.is-danger{transition:opacity 200ms var(--xw-ease-out),transform 240ms var(--xw-ease-back)}
 #xw-root .xw-btn.is-danger:before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:linear-gradient(-90deg,#ff4d6a,#ff8181);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity 200ms var(--xw-ease-out)}
@@ -449,19 +453,19 @@
 @keyframes xw-shake{15%{transform:translateX(-4px)}35%{transform:translateX(4px)}55%{transform:translateX(-2.5px)}75%{transform:translateX(1.5px)}100%{transform:none}}
 #xw-root.xw-reduce .xw-shake,#xw-root.xw-reduce .xw-btn.is-danger.is-armed{animation:none}
 
-/* ----- Ergänzungen für preload.js (nicht Teil des Handoffs) ----- */
-/* Symbol im Toast wechselt je nach Art (ok/Fehler/neutral) */
+/* ----- Additions for preload.js (not part of the handoff) ----- */
+/* Toast icon changes with the kind (ok/error/neutral) */
 #xw-root .xw-toast-ico{display:flex;flex:none}
-/* Formular-Einblendung ohne Versatz bei weniger Bewegung */
+/* Form fade-in without offset under reduced motion */
 #xw-root.xw-reduce form:not(.xw-hide){animation-name:xw-fade}
 
 /* ===== @xw:notify ===== */
-/* „Geld eingegangen“ – Benachrichtigung, Stapel, Nav-Punkt, Nachwirkung in der Seitenleiste.
-   Nutzt die Motion-Tokens aus @xw:tokens (--xw-ease-out/-in/-io/-back). Selbstständig: keine Keyframes aus anderen Abschnitten nötig.
-   Stapel: <div class="xw-nt-stack is-deck"> (oder is-list) direkt in #xw-root. Karten erzeugt XW.nt.notify(). */
+/* "Money received" – notification, stack, nav dot, aftereffect in the sidebar.
+   Uses the motion tokens from @xw:tokens (--xw-ease-out/-in/-io/-back). Self-contained: no keyframes from other sections needed.
+   Stack: <div class="xw-nt-stack is-deck"> (or is-list) directly in #xw-root. Cards are created by XW.nt.notify(). */
 
 #xw-root .xw-nt-stack{position:fixed;top:92px;left:24px;width:320px;z-index:2147483645;pointer-events:none}
-/* Slot = Position im Stapel (nur transform), Karte = Ein-/Ausblenden */
+/* Slot = position in the stack (transform only), card = fade in/out */
 #xw-root .xw-nt{position:absolute;top:0;left:0;right:0;padding-bottom:8px;pointer-events:auto;transform-origin:50% 100%;transform:translateY(var(--xw-yl,0px));transition:transform 320ms var(--xw-ease-out),opacity 200ms var(--xw-ease-out)}
 #xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt{transform:translateY(var(--xw-yd,0px)) scale(var(--xw-sd,1));transition-duration:260ms,200ms}
 #xw-root .xw-nt.is-hidden{opacity:0;pointer-events:none}
@@ -494,23 +498,23 @@
 #xw-root .xw-nt-time{flex:none;margin-left:auto}
 #xw-root .xw-nt-glint{position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 30%,rgba(58,210,159,.14) 45%,rgba(255,255,255,.09) 50%,rgba(58,210,159,.14) 55%,transparent 70%);transform:translateX(-100%);opacity:0}
 
-/* Deck: ältere Karten zeigen nur die Kante; Hover (= .is-paused) fächert zur Liste auf */
+/* Deck: older cards show only their edge; hover (= .is-paused) fans them out into a list */
 #xw-root .xw-nt-main,#xw-root .xw-nt-foot{transition:opacity 150ms var(--xw-ease-out)}
 #xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-main,#xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-foot{opacity:0}
 #xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt.is-back .xw-nt-card{filter:brightness(.8)}
 
-/* „+N more“ */
+/* "+N more" */
 #xw-root .xw-nt-more{position:absolute;top:0;left:0;display:flex;align-items:center;height:24px;padding:0 10px;border-radius:12px;font-size:11.5px;font-weight:500;color:rgba(255,255,255,.82);background:var(--xw-surface);border:1px solid rgba(255,255,255,.08);box-shadow:0 8px 20px rgba(0,0,0,.4);pointer-events:auto;opacity:0;transform:translateY(calc(var(--xw-yl,0px) - 4px));transition:opacity 150ms var(--xw-ease-in),transform 320ms var(--xw-ease-out)}
 #xw-root .xw-nt-more.is-show{opacity:1;transform:translateY(var(--xw-yl,0px));transition:opacity 200ms var(--xw-ease-out),transform 320ms var(--xw-ease-out)}
 #xw-root .xw-nt-stack.is-deck:not(.is-paused) .xw-nt-more.is-show{transform:translateY(var(--xw-yd,0px));transition-duration:200ms,260ms}
 
-/* Eingang – Akzent synchron zum Sound (t = 0: Karte eingefügt + receive.wav gestartet) */
+/* Incoming – accent in sync with the sound (t = 0: card inserted + receive.wav started) */
 #xw-root .xw-nt.is-new .xw-nt-card{animation:xw-nt-in 280ms var(--xw-ease-out) both}
 #xw-root .xw-nt.is-new .xw-nt-card:before{animation:xw-nt-bar 260ms var(--xw-ease-out) 60ms both}
 #xw-root .xw-nt.is-new .xw-nt-coin{animation:xw-nt-pop 420ms var(--xw-ease-back) 40ms both}
 #xw-root .xw-nt.is-new .xw-nt-amt>span{animation:xw-nt-amt 320ms var(--xw-ease-out) 100ms both,xw-nt-tint 1200ms var(--xw-ease-out) 100ms both}
 #xw-root .xw-nt.is-new .xw-nt-glint{animation:xw-nt-glint 800ms var(--xw-ease-io) 120ms both}
-/* Ausblenden: ✕ nach links, Klick (öffnen) zieht zusammen, automatisch nach oben */
+/* Exit: ✕ to the left, click (open) shrinks, auto dismiss upwards */
 #xw-root .xw-nt.is-out-x .xw-nt-card{animation:xw-nt-out-x 180ms var(--xw-ease-in) both}
 #xw-root .xw-nt.is-out-open .xw-nt-card{animation:xw-nt-out-open 160ms var(--xw-ease-in) both}
 #xw-root .xw-nt.is-out-auto .xw-nt-card{animation:xw-nt-out-auto 220ms var(--xw-ease-in) both}
@@ -528,7 +532,7 @@
 @keyframes xw-nt-fade{from{opacity:0}}
 @keyframes xw-nt-fade-out{to{opacity:0}}
 
-/* Nav-Punkt am Wallet-Knopf (#xw-toggle): unten rechts, damit die vorhandene .xw-count (Wallet-Anzahl, oben rechts) frei bleibt */
+/* Nav dot on the wallet button (#xw-toggle): bottom right, so the existing .xw-count (wallet count, top right) stays clear */
 #xw-root .xw-nt-badge{position:absolute;right:1px;bottom:3px;width:10px;height:10px;border-radius:5px;background:var(--xw-green);box-shadow:0 0 0 2px #0c0e0f;font-family:var(--xw-font-cond);font-size:0;font-weight:700;line-height:14px;text-align:center;color:#06140e;pointer-events:none;opacity:0;transform:scale(.3);transition:opacity 150ms var(--xw-ease-in),transform 150ms var(--xw-ease-in)}
 #xw-root .xw-nt-badge.is-on{opacity:1;transform:none;transition:opacity 200ms var(--xw-ease-out),transform 320ms var(--xw-ease-back)}
 #xw-root .xw-nt-badge.is-count{width:auto;min-width:14px;height:14px;padding:0 3px;border-radius:7px;right:-2px;bottom:1px;font-size:9.5px}
@@ -538,12 +542,12 @@
 @keyframes xw-nt-ring{from{opacity:.5;transform:scale(1)}to{opacity:0;transform:scale(2.6)}}
 @keyframes xw-nt-bump{from{transform:scale(1.3)}to{transform:none}}
 
-/* Nachwirkung: Wallet-Zeile glimmt einmal grün, gleichzeitig rollt der Saldo (@xw:roll, is-up) */
+/* Aftereffect: wallet row glows green once while the balance rolls (@xw:roll, is-up) */
 #xw-root .xw-item:after{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(58,210,159,.08);box-shadow:inset 0 0 0 1px rgba(58,210,159,.2);opacity:0;pointer-events:none}
 #xw-root .xw-item.is-received:after{animation:xw-nt-wash 1300ms var(--xw-ease-out) var(--xw-rcv-delay,0ms)}
 @keyframes xw-nt-wash{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
 
-/* Reduced Motion: nur Überblendungen; Grün (Balken, Tönung, Punkt, Zeile) bleibt */
+/* Reduced motion: cross-fades only; green (bar, tint, dot, row) stays */
 #xw-root.xw-reduce .xw-nt,#xw-root.xw-reduce .xw-nt-more{transition:opacity 200ms ease!important}
 #xw-root.xw-reduce .xw-nt.is-new .xw-nt-card{animation:xw-nt-fade 200ms ease both}
 #xw-root.xw-reduce .xw-nt.is-new .xw-nt-card:before,#xw-root.xw-reduce .xw-nt.is-new .xw-nt-coin,#xw-root.xw-reduce .xw-nt.is-new .xw-nt-glint{animation:none}
@@ -553,19 +557,41 @@
 #xw-root.xw-reduce .xw-nt-badge,#xw-root.xw-reduce .xw-nt-badge.is-on{transform:none!important;transition:opacity 200ms ease}
 #xw-root.xw-reduce .xw-nt-badge.is-pulse:after,#xw-root.xw-reduce .xw-nt-badge.is-bump{animation:none}
 
-/* ----- Ergänzungen für @xw:notify (nicht Teil des Handoffs) ----- */
-/* Wallet ohne eigenes Bild: Exodus-Logo im 18-px-Kreis so klein wie in der Wallet-Zeile (20 von 36 px) */
+/* ----- Additions for @xw:notify (not part of the handoff) ----- */
+/* Wallet without its own picture: Exodus logo in the 18 px circle as small as in the wallet row (20 of 36 px) */
 #xw-root .xw-nt-av.is-exodus{background-size:10px 10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
-/* Saldo-Roll beim Öffnen der Leiste: startet zusammen mit dem Glimmen der Zeile (460 ms + 30 ms × Zeile) */
+/* Balance roll when opening the sidebar: starts together with the row glow (460 ms + 30 ms × row) */
 #xw-root .xw-roll.is-delayed>.xw-roll-out{animation-delay:var(--xw-roll-d,0ms)!important}
 #xw-root .xw-roll.is-delayed>.xw-roll-in{animation-delay:calc(var(--xw-roll-d,0ms) + 60ms)!important}
 #xw-root.xw-reduce .xw-roll.is-delayed>.xw-roll-in{animation-delay:var(--xw-roll-d,0ms)!important}
+
+/* ----- Background sync and setup of new wallets ----- */
+/* "Ready" card: the hint may span two lines */
+#xw-root .xw-nt.is-ready .xw-nt-sub{white-space:normal}
+#xw-root .xw-badge.is-background{background:rgba(255,255,255,.07);color:rgba(255,255,255,.6)}
+#xw-root .xw-badge.is-ready{background:rgba(58,210,159,.16);color:var(--xw-green)}
+/* Status line: "Restoring – 12 coins left · keep it open" with a small spinner */
+#xw-root .xw-status{display:flex;align-items:center;gap:7px;margin-top:5px;font-size:11.5px;line-height:1.35;color:rgba(255,255,255,.72)}
+#xw-root .xw-status.is-warn{color:#ffc46b}
+#xw-root .xw-spin{flex:none;width:10px;height:10px;border-radius:50%;border:1.5px solid rgba(255,255,255,.18);border-top-color:var(--xw-cyan);animation:xw-spin 900ms linear infinite}
+#xw-root .xw-status.is-warn .xw-spin{border-top-color:#ffc46b;animation:none;border-color:#ffc46b;opacity:.8}
+@keyframes xw-spin{to{transform:rotate(360deg)}}
+#xw-root.xw-reduce .xw-spin{animation:none;border-color:var(--xw-cyan)}
+/* Switch "Sync all wallets in the background" */
+#xw-root .xw-bg{display:flex;align-items:center;gap:12px;margin:4px 24px 0;padding:10px 0 2px;border-top:1px solid var(--xw-line);cursor:pointer}
+#xw-root .xw-bg-text{flex:1;min-width:0}
+#xw-root .xw-bg-title{font-size:12.5px;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#xw-root .xw-toggle{flex:none;position:relative;width:30px;height:18px;border-radius:9px;background:rgba(255,255,255,.14);transition:background 200ms var(--xw-ease-out)}
+#xw-root .xw-toggle:after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform 240ms var(--xw-ease-back)}
+#xw-root .xw-toggle[aria-checked="true"]{background:var(--xw-green)}
+#xw-root .xw-toggle[aria-checked="true"]:after{transform:translateX(12px)}
+#xw-root .xw-toggle:focus-visible{outline:1px solid var(--xw-cyan);outline-offset:2px}
 `
 
   // -------------------------------------------------------------------------------------------
-  // Texte. Die Sprache folgt Exodus' Einstellung (selectors.locale.language, von main.js geliefert);
-  // Exodus-Desktop ist derzeit nur Englisch. Unbekannte Sprachen fallen auf Englisch zurück, Zahlen
-  // und Daten werden trotzdem im Format der Exodus-Sprache angezeigt (Intl kann jede Sprache).
+  // Texts. The language follows Exodus' setting (selectors.locale.language, provided by main.js);
+  // Exodus desktop is currently English only. Unknown languages fall back to English; numbers
+  // and dates are still shown in the format of the Exodus language (Intl handles any language).
   // -------------------------------------------------------------------------------------------
   const TEXTS = {
     en: {
@@ -578,7 +604,7 @@
       yourWallets: 'Your wallets',
       sumLabel: 'Total of all wallets',
       sumMissing: (n) => `excluding ${n} wallet${n > 1 ? 's' : ''} with unknown balance`,
-      foot: 'Balances: last known value from Exodus (saved, not live). Click a wallet to open it in a new window.',
+      foot: 'Balances: last value saved by each wallet – kept up to date while it runs (also in the background). Click a wallet to open it in a new window.',
       loading: 'Loading wallets …',
       create: 'Create new wallet',
       restore: 'Restore wallet with 12 words',
@@ -692,6 +718,24 @@
       ntReceived: (ticker) => `Received ${ticker}`,
       ntDismiss: 'Dismiss',
       ntOpen: 'Open wallet',
+      badgeBackground: 'Background',
+      stStarting: 'Starting …',
+      stOnboarding: 'Waiting – finish the setup in its Exodus window',
+      stLocked: 'Locked – open it and enter the password',
+      stLoading: 'Loading …',
+      stRestoring: (n) => n > 0 ? `Restoring – ${n} coin${n === 1 ? '' : 's'} left · keep it open` : 'Restoring · keep it open',
+      stSyncing: 'Loading balances · keep it open',
+      stAddresses: 'Saving addresses · keep it open',
+      stAlmost: 'Almost ready · keep it open',
+      stSetupPending: 'Setup not finished – open it and keep it open until it’s ready',
+      badgeReady: 'Ready',
+      readyTitle: 'Ready',
+      readySub: 'Everything loaded – you can close it',
+      mBackground: 'Move to background',
+      mShow: 'Show window',
+      bgSync: 'Sync all wallets in the background',
+      bgSyncHint: 'While Exodus is open, your other wallets keep running invisibly – so balances stay current and you get notified about incoming payments.',
+      bgMoved: (n) => `${n} keeps running in the background.`,
     },
     de: {
       q: (s) => `„${s}“`,
@@ -703,7 +747,7 @@
       yourWallets: 'Deine Wallets',
       sumLabel: 'Summe aller Wallets',
       sumMissing: (n) => `ohne ${n} Wallet${n > 1 ? 's' : ''} mit noch unbekanntem Kontostand`,
-      foot: 'Kontostände: letzter bekannter Stand aus Exodus (gespeichert, nicht live). Klick auf eine Wallet öffnet sie in einem neuen Fenster.',
+      foot: 'Kontostände: zuletzt von der Wallet gespeichert – bleiben aktuell, solange sie läuft (auch im Hintergrund). Klick auf eine Wallet öffnet sie in einem neuen Fenster.',
       loading: 'Wallets werden geladen …',
       create: 'Neue Wallet erstellen',
       restore: 'Wallet mit 12 Wörtern wiederherstellen',
@@ -817,10 +861,28 @@
       ntReceived: (ticker) => `${ticker} erhalten`,
       ntDismiss: 'Schließen',
       ntOpen: 'Wallet öffnen',
+      badgeBackground: 'Hintergrund',
+      stStarting: 'Startet …',
+      stOnboarding: 'Wartet – Einrichtung im Exodus-Fenster abschließen',
+      stLocked: 'Gesperrt – öffnen und Passwort eingeben',
+      stLoading: 'Lädt …',
+      stRestoring: (n) => n > 0 ? `Wird wiederhergestellt – noch ${n} Coin${n === 1 ? '' : 's'} · offen lassen` : 'Wird wiederhergestellt · offen lassen',
+      stSyncing: 'Kontostände werden geladen · offen lassen',
+      stAddresses: 'Adressen werden gespeichert · offen lassen',
+      stAlmost: 'Gleich fertig · offen lassen',
+      stSetupPending: 'Einrichtung nicht fertig – öffnen und offen lassen, bis sie bereit ist',
+      badgeReady: 'Bereit',
+      readyTitle: 'Bereit',
+      readySub: 'Alles geladen – du kannst sie schließen',
+      mBackground: 'In den Hintergrund',
+      mShow: 'Fenster anzeigen',
+      bgSync: 'Alle Wallets im Hintergrund synchronisieren',
+      bgSyncHint: 'Solange Exodus offen ist, laufen deine anderen Wallets unsichtbar mit – Kontostände bleiben aktuell und Eingänge werden gemeldet.',
+      bgMoved: (n) => `${n} läuft im Hintergrund weiter.`,
     },
   }
 
-  // Exodus' Standard ist Englisch – bis main.js die echte Einstellung liefert, gilt das
+  // Exodus' default is English – it applies until main.js delivers the real setting
   let language = 'en'
   let T = TEXTS.en
   function setLanguage (lang) {
@@ -829,7 +891,7 @@
     language = raw.replace('_', '-')
     T = TEXTS[base] || TEXTS.en
   }
-  // Intl-Locale: "en" allein ergibt US-Format ($1,234.56); Fehler bei exotischen Codes abfangen
+  // Intl locale: "en" alone gives US format ($1,234.56); catch errors for exotic codes
   const intlLocale = () => {
     try { return Intl.NumberFormat.supportedLocalesOf([language]).length ? language : 'en' } catch (e) { return 'en' }
   }
@@ -840,7 +902,7 @@
       if (v == null || v === false) continue
       if (k === 'class') node.className = v
       else if (k === 'text') node.textContent = v
-      else if (k === 'html') node.innerHTML = v // nur für die festen SVG-Symbole oben
+      else if (k === 'html') node.innerHTML = v // only for the fixed SVG icons above
       else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
       else node.setAttribute(k, v === true ? '' : String(v))
     }
@@ -850,29 +912,29 @@
     return node
   }
 
-  // Motion-Helfer aus design_handoff_sidebar_motion/xw-motion.js – nur Klassen setzen/entfernen.
-  // Im Scope dieses Skripts statt als window.XW (isolierte Welt, nichts nach außen geben).
+  // Motion helpers from design_handoff_sidebar_motion/xw-motion.js – only set/remove classes.
+  // In this script's scope instead of window.XW (isolated world, expose nothing).
   const reduceQuery = matchMedia('(prefers-reduced-motion: reduce)')
   const XW = {
-    // Reduced-Motion auf #xw-root spiegeln
+    // Mirror reduced motion onto #xw-root
     syncReduce (root) {
       const set = () => root.classList.toggle('xw-reduce', reduceQuery.matches)
       set(); reduceQuery.addEventListener('change', set)
     },
-    // Kopier-Bestätigung (Button + Zeile): .is-copied setzen, nach hold entfernen. Erneuter Klick verlängert nur.
+    // Copy confirmation (button + row): set .is-copied, remove after hold. Another click only extends it.
     confirm (el, hold = 1800) {
       clearTimeout(el._xwT)
       if (!el.classList.contains('is-copied')) el.classList.add('is-copied')
       el._xwT = setTimeout(() => el.classList.remove('is-copied'), hold)
     },
-    // Keyframe-Animation neu starten
+    // Restart a keyframe animation
     replay (el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls) },
-    // Einmal-Klasse, entfernt sich nach animationend selbst
+    // One-shot class, removes itself after animationend
     once (el, cls) {
       XW.replay(el, cls)
       el.addEventListener('animationend', function h (e) { if (e.target === el) { el.classList.remove(cls); el.removeEventListener('animationend', h) } })
     },
-    // kind: 'ok' | 'error' | '' (neutral, Verlaufsbalken). Leeres kind setzt keine is-*-Klasse.
+    // kind: 'ok' | 'error' | '' (neutral, gradient bar). An empty kind sets no is-* class.
     toast (el, text, kind = 'ok', hold = 2400) {
       clearTimeout(el._xwT)
       el.querySelector('.xw-toast-text').textContent = text
@@ -881,7 +943,7 @@
       XW.replay(el, 'is-show')
       el._xwT = setTimeout(() => el.classList.remove('is-show'), hold)
     },
-    // Saldo rollen: host = .xw-roll, dir = 'up' | 'down' | ''
+    // Roll a balance: host = .xw-roll, dir = 'up' | 'down' | ''
     roll (host, text, dir) {
       const old = host.querySelector('.xw-roll-cur')
       const n = document.createElement('span')
@@ -895,8 +957,8 @@
     },
   }
 
-  // „Geld eingegangen“ aus design_handoff_notify/xw-notify.js – als XW.nt im selben Scope. Die Texte
-  // kommen aus TEXTS (folgen also der Exodus-Sprache), das ✕ ist ICON.close.
+  // "Money received" from design_handoff_notify/xw-notify.js – as XW.nt in the same scope. The texts
+  // come from TEXTS (so they follow the Exodus language), the ✕ is ICON.close.
   XW.nt = (() => {
     const texts = () => ({ more: T.ntMore, received: T.ntReceived, now: T.justNow, dismiss: T.ntDismiss, open: T.ntOpen })
     const SKEL = '<div class="xw-nt-card" role="button" tabindex="0"><i class="xw-nt-glint" aria-hidden="true"></i>' +
@@ -1008,7 +1070,7 @@
         more.style.setProperty('--xw-yd', (h0 + Math.min(slots.length - 1, MAX - 1) * DECK_STEP + GAP) + 'px')
         more.classList.toggle('is-show', n > 0)
       },
-      /* Punkt/Zähler am Wallet-Knopf: n = ungesehene Eingänge; 0 beim Öffnen der Leiste */
+      /* Dot/counter on the wallet button: n = unseen incoming payments; 0 when the sidebar opens */
       badge (toggle, n) {
         let b = toggle.querySelector('.xw-nt-badge')
         if (!b) { b = document.createElement('span'); b.className = 'xw-nt-badge'; b.setAttribute('aria-hidden', 'true'); toggle.appendChild(b) }
@@ -1020,7 +1082,7 @@
         else if (n > was) XW.replay(b, 'is-bump')
         if (n === 0) b.classList.remove('is-on', 'is-pulse', 'is-bump')
       },
-      /* Wallet-Zeile kurz grün aufglimmen lassen (delay: z. B. 460 ms, wenn die Leiste gerade aufgeht) */
+      /* Briefly make the wallet row glow green (delay: e.g. 460 ms while the sidebar is opening) */
       markWallet (item, delay = 0) {
         item.style.setProperty('--xw-rcv-delay', delay + 'ms')
         XW.replay(item, 'is-received')
@@ -1031,7 +1093,7 @@
     return NT
   })()
 
-  // Währung kommt pro Wallet aus deren Exodus-Einstellung (USD, EUR, …), das Zahlenformat aus der Sprache
+  // Currency comes per wallet from its Exodus setting (USD, EUR, …), the number format from the language
   function money (value, currency) {
     if (typeof value !== 'number' || !isFinite(value)) return '–'
     const locale = intlLocale()
@@ -1054,13 +1116,13 @@
       d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }))
   }
 
-  // label kommt von main.js (eigener Name der Standard-Wallet); Fallback für ältere Zustände
+  // label comes from main.js (custom name of the default wallet); fallback for older states
 const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
 
   function start () {
-    debug('start() aufgerufen')
+    debug('start() called')
     if (document.getElementById('xw-root')) {
-      debug('xw-root existiert bereits, abbruch')
+      debug('xw-root already exists, aborting')
       return
     }
     const style = el('style', { id: 'xw-style' })
@@ -1070,12 +1132,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let state = null
     let open = false
     let refreshTimer = null
-    // Vorherige Werte je Wallet: für Saldo-Roll (nur bei Änderung) und is-live (nur bei Statuswechsel)
+    // Previous values per wallet: for the balance roll (only on change) and is-live (only on status change)
     const prevValues = new Map()
     const prevStatus = new Map()
 
-    // Feste Beschriftungen: [Element, Textschlüssel, Attribut oder null für den Text]. applyTexts()
-    // setzt sie neu, sobald main.js eine andere Exodus-Sprache meldet.
+    // Fixed labels: [element, text key, attribute or null for the text]. applyTexts()
+    // sets them again as soon as main.js reports a different Exodus language.
     const labels = []
     const label = (node, key, attr = null) => { labels.push([node, key, attr]); return node }
     function applyTexts () {
@@ -1097,10 +1159,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     label(toggle, 'toggleAria', 'aria-label')
 
     const eyeBtn = el('button', { type: 'button', class: 'xw-icon', onclick: toggleHide })
-    // Summe staffelt beim Öffnen als zweites Element ein (Kopf 0, Summe 1, Wallet-Zeilen ab 2)
+    // On open the total staggers in as the second element (header 0, total 1, wallet rows from 2)
     const sumBox = el('div', { class: 'xw-sum xw-stag xw-hide', style: '--xw-i:1' })
     const list = el('div', { class: 'xw-list', role: 'list' })
-    // Hinweis-Toast (ersetzt das frühere .xw-notice im Fußbereich – schwebt, verschiebt nichts)
+    // Notice toast (replaces the former .xw-notice in the footer – floats, shifts nothing)
     const toastIco = el('span', { class: 'xw-toast-ico', html: ICON.check(16) })
     const toastEl = el('div', { class: 'xw-toast', role: 'status', 'aria-live': 'polite' }, toastIco, el('span', { class: 'xw-toast-text' }))
     const oldBox = el('div')
@@ -1109,8 +1171,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       el('button', { type: 'button', class: 'xw-btn', onclick: startRestore, html: ICON.restore(18) }, label(el('span'), 'restore')),
       oldBox)
 
-    // Formular (Name eingeben) mit frei wählbaren Knöpfen – z. B. beim Umbenennen einer offenen Wallet
-    // "Schließen & umbenennen" / "Schließen, umbenennen & öffnen" / "Abbrechen"
+    // Form (enter a name) with freely configurable buttons – e.g. when renaming an open wallet
+    // "Close & rename" / "Close, rename & reopen" / "Cancel"
     const formTitle = el('div', { class: 'xw-form-title' })
     const formHint = el('div', { class: 'xw-form-hint' })
     const input = el('input', { class: 'xw-input', type: 'text', maxlength: 40, spellcheck: 'false', autocomplete: 'off' })
@@ -1120,7 +1182,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let formActions = []
     let formBusy = false
 
-    // Adress-Ansicht: gleitet von rechts über die Liste
+    // Address view: slides in from the right over the list
     const sheetTitle = el('div', { class: 'xw-sheet-title' })
     const sheetSub = el('div', { class: 'xw-sheet-sub' })
     const addrFilter = el('input', { class: 'xw-input', type: 'text', spellcheck: 'false', autocomplete: 'off', oninput: () => renderAddresses() })
@@ -1129,8 +1191,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     const addrChips = el('div', { class: 'xw-chips xw-hide', role: 'tablist' })
     label(addrChips, 'addrPortfolios', 'aria-label')
     const exportHint = label(el('div', { class: 'xw-sheet-sub xw-hide' }), 'exportHint')
-    // Kopier-Knopf Variante 1A „Lichtschweif“: beide Beschriftungen liegen im selben Grid-Feld, die Breite
-    // richtet sich nach der längeren – beim Wechsel springt nichts.
+    // Copy button variant 1A "light trail": both labels sit in the same grid cell, the width
+    // follows the longer one – nothing jumps when they switch.
     const exportLabelA = el('span')
     const exportLabelB = el('span')
     const exportBtn = el('button', { type: 'button', class: 'xw-btn is-primary xw-cp xw-cp--trail', onclick: () => doExport() },
@@ -1139,7 +1201,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       el('span', { class: 'xw-cp-stack' },
         el('span', { class: 'xw-cp-a', html: ICON.copy(16) }, exportLabelA),
         el('span', { class: 'xw-cp-b', html: ICON.check(16) }, exportLabelB)))
-    // Während „Copied“ bleibt die Zahl im zweiten Label stehen, auch wenn sich die Auswahl ändert
+    // While "Copied" shows, the number in the second label stays put, even if the selection changes
     function setExportLabels (n) {
       exportLabelA.textContent = T.exportBtn(n)
       if (!exportBtn.classList.contains('is-copied')) exportLabelB.textContent = T.exportBtnDone(n)
@@ -1154,22 +1216,29 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     let sheetWallet = null
     let sheetAddresses = []
     let sheetPortfolioNames = []
-    // Gewähltes Portfolio (account-Name wie "exodus_1") je Wallet merken – null = alle
+    // Remember the selected portfolio (account name like "exodus_1") per wallet – null = all
     const sheetPortfolioByWallet = new Map()
-    // Export-Modus: Mehrfachauswahl, dann alle Adressen als Liste kopieren.
-    // sheetCross = wallet-übergreifend (Auswahl = Wallets); sonst pro Wallet (Auswahl = Portfolios).
+    // Export mode: multi-select, then copy all addresses as a list.
+    // sheetCross = across wallets (selection = wallets); otherwise per wallet (selection = portfolios).
     let sheetExport = false
     let sheetCross = false
     let sheetSelected = new Set()
 
-    // Hauptansicht in .xw-view: weicht nach links, wenn die Adress-Ansicht (.xw-sheet) hereingleitet.
-    // Beide sind direkte Kinder des Panels; umgeschaltet wird mit .is-sheet am Panel.
+    // Main view in .xw-view: moves aside to the left when the address view (.xw-sheet) slides in.
+    // Both are direct children of the panel; switching is done with .is-sheet on the panel.
+    // Switch: keep all wallets running in the background (default: on)
+    const bgToggle = label(el('button', { type: 'button', class: 'xw-toggle', role: 'switch', 'aria-checked': 'true' }), 'bgSync', 'aria-label')
+    // One line – the explanation lives in the tooltip so the wallet list doesn't shrink
+    const bgRow = label(el('div', { class: 'xw-bg xw-hide', onclick: () => toggleBackground() },
+      el('div', { class: 'xw-bg-text' }, label(el('div', { class: 'xw-bg-title' }), 'bgSync')),
+      bgToggle), 'bgSyncHint', 'title')
     const view = el('div', { class: 'xw-view' },
       sumBox,
       label(el('div', { class: 'xw-intro' }), 'intro'),
       el('div', { class: 'xw-section' }, label(el('div', { class: 'xw-label' }), 'yourWallets')),
       list,
       el('div', { class: 'xw-bottom' }, actions, form),
+      bgRow,
       label(el('div', { class: 'xw-foot' }), 'foot'))
     const panel = el('aside', { id: 'xw-panel', tabindex: '-1', 'aria-label': 'Wallets' },
       el('div', { class: 'xw-head xw-stag', style: '--xw-i:0' },
@@ -1183,7 +1252,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheet,
       toastEl)
 
-    // Exodus-Tastenkürzel nicht auslösen, während in der Seitenleiste getippt wird
+    // Don't trigger Exodus keyboard shortcuts while typing in the sidebar
     for (const type of ['keydown', 'keyup', 'keypress']) panel.addEventListener(type, (e) => e.stopPropagation())
     document.addEventListener('keydown', (e) => {
       if (!open || e.key !== 'Escape') return
@@ -1195,17 +1264,17 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       else closePanel()
     }, true)
 
-    // Stapel für „Geld eingegangen“ (@xw:notify): oben links unter der Navigation, unter Backdrop und Leiste
+    // Stack for "Money received" (@xw:notify): top left below the navigation, beneath backdrop and sidebar
     const ntStack = el('div', { class: 'xw-nt-stack is-deck' })
-    // Ungesehene Eingänge bei geschlossener Leiste: Zähler am Knopf und die betroffenen Wallets (IDs)
+    // Unseen incoming payments while the sidebar is closed: counter on the button and the affected wallets (IDs)
     let unseen = 0
     const pending = new Set()
     const root = el('div', { id: 'xw-root' }, toggle, ntStack, el('div', { id: 'xw-backdrop', onclick: () => closePanel() }), panel)
     document.body.appendChild(root)
-    XW.syncReduce(root) // „weniger Bewegung“ als Klasse .xw-reduce spiegeln
+    XW.syncReduce(root) // mirror "reduced motion" as class .xw-reduce
     applyTexts()
 
-    // Knopf vor dem Exodus-Logo platzieren (Header-Höhe/-Sichtbarkeit ändert sich je nach Ansicht)
+    // Place the button in front of the Exodus logo (header height/visibility changes per view)
     function placeToggle () {
       const nav = document.getElementById('global-navigation')
       const r = nav && nav.getBoundingClientRect()
@@ -1221,9 +1290,9 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     setInterval(placeToggle, 600)
     window.addEventListener('resize', placeToggle)
 
-    // Exodus setzt die Theme-Klasse (.exodus-theme-*) auf ein Element innerhalb von #app-container.
-    // Unser #xw-root hängt direkt am body und erbt die Variablen deshalb nicht – also kopieren wir die
-    // berechneten Werte herüber, sobald sich das Theme ändert.
+    // Exodus sets the theme class (.exodus-theme-*) on an element inside #app-container.
+    // Our #xw-root hangs directly off body and so doesn't inherit the variables – so we copy the
+    // computed values over whenever the theme changes.
     const THEME_VARS = [
       '--exodus-theme-base-color', '--exodus-theme-base-color-darken', '--exodus-theme-base-color-darken-more',
       '--exodus-theme-base-color-lighten', '--exodus-theme-base-color-lighten-more', '--exodus-theme-text-color',
@@ -1240,13 +1309,13 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         if (value) root.style.setProperty(name, value)
         else root.style.removeProperty(name)
       }
-      debug(`Theme übernommen: ${key || '(Standard)'}`)
+      debug(`Theme applied: ${key || '(default)'}`)
     }
     syncTheme()
     setInterval(syncTheme, 2000)
 
-    // Wallet-Zeilen gestaffelt einblenden (@xw:stagger). .xw-anim bleibt nur kurz am Container: Zeilen, die in
-    // dieser Zeit eingefügt werden (erstes Laden nach dem Öffnen), laufen mit; das 15-s-Neuzeichnen nicht.
+    // Stagger in the wallet rows (@xw:stagger). .xw-anim stays on the container only briefly: rows inserted
+    // during that time (first load after opening) animate along; the 15 s redraw does not.
     let listAnimTimer = null
     function animateList () {
       XW.replay(list, 'xw-anim')
@@ -1261,8 +1330,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       root.classList.add('xw-open')
       toggle.setAttribute('aria-expanded', 'true')
       if (!state) list.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
-      // Eingänge bei geschlossener Leiste: Punkt weg; die Zeile glimmt und der Saldo rollt, sobald Panel und
-      // Stagger durch sind (460 ms + 30 ms × Zeile) – beides mit demselben Startzeitpunkt
+      // Incoming payments while the sidebar was closed: dot goes away; the row glows and the balance rolls once
+      // panel and stagger are done (460 ms + 30 ms × row) – both with the same start time
       const marks = new Map()
       if (pending.size) {
         const t0 = performance.now()
@@ -1282,9 +1351,17 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           if (item) XW.nt.markWallet(item, Math.max(0, Math.round(at - performance.now())))
         }
       })
-      clearInterval(refreshTimer)
-      refreshTimer = setInterval(refresh, 15000)
+      refreshEvery = 0
+      setRefreshEvery(15000)
       setTimeout(() => panel.focus(), 60)
+    }
+
+    let refreshEvery = 0
+    function setRefreshEvery (ms) {
+      if (refreshEvery === ms) return
+      refreshEvery = ms
+      clearInterval(refreshTimer)
+      refreshTimer = setInterval(refresh, ms)
     }
 
     function closePanel () {
@@ -1292,6 +1369,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       root.classList.remove('xw-open')
       toggle.setAttribute('aria-expanded', 'false')
       clearInterval(refreshTimer)
+      refreshEvery = 0
       closeMenu()
       closeSheet()
       hideForm()
@@ -1306,8 +1384,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
     }
 
-    // Hinweise als Toast. Kurze Bestätigungen stehen 2,4 s (Handoff-Standard); längere Texte und Fehler
-    // bleiben länger, damit man sie lesen kann. Die Restzeit-Linie läuft über genau diese Dauer.
+    // Notices as a toast. Short confirmations stay for 2.4 s (handoff default); longer texts and errors
+    // stay longer so they can be read. The remaining-time line runs for exactly this duration.
     function showNotice (text, kind) {
       const len = String(text).length
       const hold = kind === 'error'
@@ -1322,7 +1400,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if ((lang || 'en') === language) return
       setLanguage(lang || 'en')
       applyTexts()
-      if (!form.classList.contains('xw-hide')) hideForm() // offenes Formular trüge noch die alte Sprache
+      if (!form.classList.contains('xw-hide')) hideForm() // an open form would still show the old language
     }
 
     function render () {
@@ -1334,7 +1412,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       count.textContent = String(state.wallets.length)
       count.classList.toggle('xw-hide', state.wallets.length < 2)
       renderSum(hide)
-      // Offenes Menü gehört zu einem Element, das gleich ersetzt wird
+      bgToggle.setAttribute('aria-checked', String(state.settings.backgroundSync !== false))
+      bgRow.classList.toggle('xw-hide', state.wallets.length < 2)
+      // While a wallet is still loading or being set up, check more often (4 s instead of 15 s)
+      const busy = state.wallets.some((w) => w.setup || (w.running && w.status && w.status.state !== 'ready'))
+      if (open) setRefreshEvery(busy ? 4000 : 15000)
+      // An open menu belongs to an element that is about to be replaced
       closeMenu()
       list.replaceChildren(...state.wallets.map((w, i) => renderWallet(w, hide, i)))
       oldBox.replaceChildren(...state.oldFolders.map((f) =>
@@ -1342,11 +1425,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           el('span', { text: T.importOld(f.name) }))))
     }
 
-    // Saldo in .xw-roll verpacken (@xw:roll). Hat sich der Wert seit dem letzten Zeichnen geändert, rollt der
-    // alte Wert raus und der neue rein – Richtung nach der Zahl. Beim ersten Zeichnen und bei verborgenen
-    // Kontoständen (••••••) steht der Wert einfach da, ohne Animation.
-    // rollAt: Startzeitpunkt (performance.now) für den nächsten Roll eines Saldos – nach einem Eingang bei
-    // geschlossener Leiste rollt er erst zusammen mit dem Glimmen der Zeile
+    // Wrap the balance in .xw-roll (@xw:roll). If the value changed since the last render, the old
+    // value rolls out and the new one rolls in – direction by the number. On the first render and with hidden
+    // balances (••••••) the value is simply shown, without animation.
+    // rollAt: start time (performance.now) for a balance's next roll – after an incoming payment while the
+    // sidebar was closed, it only rolls together with the row glow
     const rollAt = new Map()
     function rollHost (key, text, num, rollable) {
       const host = el('span', { class: 'xw-roll' })
@@ -1368,8 +1451,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return host
     }
 
-    // Summe aller Wallets. Verschiedene Währungen (z. B. eine Wallet in USD, eine in EUR) werden nicht
-    // umgerechnet – dafür bräuchte es Wechselkurse aus dem Netz –, sondern als Teilsummen angezeigt.
+    // Total of all wallets. Different currencies (e.g. one wallet in USD, one in EUR) are not
+    // converted – that would need exchange rates from the network – but shown as subtotals.
     function renderSum (hide) {
       const known = state.wallets.filter((w) => w.cache && typeof w.cache.total === 'number')
       if (!known.length) {
@@ -1389,11 +1472,37 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         el('div', { class: 'xw-sum-row' },
           el('div', { class: 'xw-label', text: T.sumLabel }),
           el('div', { class: 'xw-sum-count', text: T.walletsCount(state.wallets.length) })),
-        // Bei mehreren Währungen rollt der ganze String; die Richtung kommt von der Hauptwährung
+        // With several currencies the whole string rolls; the direction comes from the main currency
         el('div', { class: 'xw-sum-value' + (groups.length > 1 && !hide ? ' is-multi' : '') }, rollHost('sum', text, groups[0][1], !hide)),
-        // replaceChildren() würde null als Text "null" einfügen, daher leeres Array statt null
+        // replaceChildren() would insert null as the text "null", hence an empty array instead of null
         ...(missing ? [el('div', { class: 'xw-sum-note', text: T.sumMissing(missing) })] : []))
       sumBox.classList.remove('xw-hide')
+    }
+
+    // What Exodus is currently doing in this wallet – only while it isn't simply "ready". For new wallets
+    // (create, restore, import) this says it has to stay open until everything is loaded.
+    function statusLine (w) {
+      const st = w.running && w.status ? w.status.state : null
+      let text = null
+      let warn = false
+      if (st && st !== 'ready') {
+        if (st === 'onboarding' && !w.hasWallet) return null // "Waiting for the 12 words" / "New" is already shown
+        text = st === 'starting' ? T.stStarting
+          : st === 'onboarding' ? T.stOnboarding
+            : st === 'locked' ? T.stLocked
+              : st === 'loading' ? T.stLoading
+                : st === 'restoring' ? T.stRestoring(w.status.left)
+                  : st === 'syncing' ? T.stSyncing
+                    : st === 'addresses' ? T.stAddresses : null
+        warn = st === 'locked'
+      } else if (w.setup && w.running) {
+        text = T.stAlmost
+      } else if (w.setup && !w.running && w.hasWallet) {
+        text = T.stSetupPending
+        warn = true
+      }
+      if (!text) return null
+      return el('div', { class: 'xw-status' + (warn ? ' is-warn' : ''), role: 'status' }, el('span', { class: 'xw-spin', 'aria-hidden': 'true' }), el('span', { text }))
     }
 
     function renderWallet (w, hide, index) {
@@ -1406,10 +1515,14 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
 
       const badges = []
       if (w.isCurrent) badges.push(el('span', { class: 'xw-badge', text: T.badgeHere }))
+      else if (w.background) badges.push(el('span', { class: 'xw-badge is-background', text: T.badgeBackground }))
       else if (w.running) badges.push(el('span', { class: 'xw-badge is-running', text: T.badgeOpen }))
+      // Just finished setting up: "Ready" for half an hour
+      const readyAt = !w.setup && cache && Date.parse(cache.setupDoneAt || '')
+      if (readyAt && Date.now() - readyAt < 30 * 60 * 1000) badges.push(el('span', { class: 'xw-badge is-ready', text: T.badgeReady }))
       if (w.isStart && state.wallets.length > 1) badges.push(el('span', { class: 'xw-badge is-start', text: T.badgeStart }))
 
-      // Portfolios in einer Zeile; passt es nicht, blendet die Zeile rechts aus und scrollt per Mausrad seitlich
+      // Portfolios in one row; if they don't fit, the row fades out on the right and scrolls sideways with the mouse wheel
       const ports = !hide && cache && cache.portfolios && cache.portfolios.length > 1
         ? el('div', {
           class: 'xw-ports',
@@ -1428,7 +1541,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           if (ports.scrollWidth <= ports.clientWidth + 1 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
           const max = ports.scrollWidth - ports.clientWidth
           const atEnd = (e.deltaY > 0 && ports.scrollLeft >= max - 1) || (e.deltaY < 0 && ports.scrollLeft <= 0)
-          if (atEnd) return // am Rand normal weiter die Liste scrollen
+          if (atEnd) return // at the edge, keep scrolling the list normally
           e.preventDefault()
           ports.scrollLeft += e.deltaY
         }, { passive: false })
@@ -1445,7 +1558,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         onclick: (e) => { e.stopPropagation(); toggleMenu(w, moreBtn) },
       })
 
-      // Echter Statuswechsel (z. B. andere Wallet wurde gerade geöffnet)? Nicht bei jedem Neuzeichnen.
+      // Real status change (e.g. another wallet was just opened)? Not on every redraw.
       const status = w.isCurrent ? 'current' : w.running ? 'running' : ''
       const becameLive = prevStatus.has(w.id) && prevStatus.get(w.id) !== status && !!status
       prevStatus.set(w.id, status)
@@ -1453,13 +1566,13 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       const name = labelOf(w)
       const item = el('div', {
         class: 'xw-item' + (w.isCurrent ? ' is-current' : w.running ? ' is-running' : ''),
-        style: `--xw-i:${index + 2}`, // Kopf 0, Summe 1, Wallet-Zeilen ab 2
+        style: `--xw-i:${index + 2}`, // header 0, total 1, wallet rows from 2
         'data-id': w.id,
         role: 'listitem',
         tabindex: w.isCurrent ? null : '0',
         title: w.isCurrent ? T.itemCurrent : (w.running ? T.itemRunning : T.itemOpen),
       },
-      // Eigenes Bild (data:-URL von main.js) oder das Exodus-Logo
+      // Custom picture (data: URL from main.js) or the Exodus logo
       w.avatar
         ? el('div', { class: 'xw-avatar has-image' }, el('img', { src: w.avatar, alt: '', draggable: 'false' }))
         : el('div', { class: 'xw-avatar is-exodus' }),
@@ -1467,10 +1580,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         el('div', { class: 'xw-name' }, el('span', { class: 'xw-name-text', text: name }), ...badges),
         el('div', { class: 'xw-bal' + (cache ? '' : ' is-muted') }, cache ? rollHost('w:' + w.id, balance, cache.total, !hide) : balance),
         cache ? el('div', { class: 'xw-meta', text: T.updated(ago(cache.updatedAt)) }) : null,
+        statusLine(w),
         ports),
       moreBtn)
 
-      // Schnell wechseln: erscheint beim Drüberfahren, öffnet die Wallet und schließt dieses Fenster
+      // Quick switch: appears on hover, opens the wallet and closes this window
       if (!w.isCurrent) {
         item.appendChild(el('button', {
           type: 'button',
@@ -1482,7 +1596,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         }, el('span', { text: T.fastSwitch })))
       }
 
-      // Rechtsklick öffnet dasselbe Menü an der Mausposition
+      // Right-click opens the same menu at the mouse position
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -1493,7 +1607,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         item.addEventListener('click', (e) => { if (!e.target.closest('.xw-more, .xw-fast')) openWallet(w, false) })
         item.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === item) openWallet(w, false) })
       }
-      // Status-Punkt springt ein und pulsiert einmal (@xw:switch), danach Klasse wieder weg
+      // Status dot pops in and pulses once (@xw:switch), then the class is removed again
       if (becameLive) {
         XW.replay(item, 'is-live')
         setTimeout(() => item.classList.remove('is-live'), 1000)
@@ -1502,7 +1616,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     // -----------------------------------------------------------------------------------------
-    // 3-Punkte-Menü
+    // 3-dot menu
     // -----------------------------------------------------------------------------------------
 
     let menu = null
@@ -1511,8 +1625,9 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     function menuEntries (w) {
       const entries = []
       if (!w.isCurrent) {
-        entries.push([ICON.open, w.running ? T.mFocus : T.mOpen, () => openWallet(w, false)])
+        entries.push([ICON.open, w.background ? T.mShow : w.running ? T.mFocus : T.mOpen, () => openWallet(w, false)])
         entries.push([ICON.swap, T.mSwitch, () => openWallet(w, true)])
+        if (w.running && !w.background && state.settings.backgroundSync !== false) entries.push([ICON.layers, T.mBackground, () => moveToBackground(w)])
         if (w.running) entries.push([ICON.power, T.mClose, () => closeWallet(w), 'is-danger'])
       }
       if (w.hasWallet) {
@@ -1530,10 +1645,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
       entries.push([ICON.image, T.mAvatar, () => pickAvatar(w)])
       if (w.avatar) entries.push([ICON.reset, T.mAvatarReset, () => resetAvatar(w)])
-      // Desktop-Verknüpfungen gibt es nur unter Windows (.lnk)
+      // Desktop shortcuts only exist on Windows (.lnk)
       if (!state || state.platform === 'win32') entries.push([ICON.desktop, T.mShortcut, () => makeShortcut(w)])
       entries.push([ICON.folder, T.mFolder, () => call('showFolder', w.id).catch(fail)])
-      // Standard-Ordner gehört Exodus selbst; die eigene Wallet kann sich nicht aus dem Fenster heraus löschen
+      // The default folder belongs to Exodus itself; a wallet can't delete itself from its own window
       if (!w.isStandard && !w.external && !w.isCurrent) {
         entries.push('-')
         entries.push([ICON.trash, T.mDelete, () => startDelete(w), 'is-danger'])
@@ -1541,7 +1656,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return entries.filter((e, i, all) => e !== '-' || (i > 0 && all[i - 1] !== '-'))
     }
 
-    // point: Mausposition bei Rechtsklick – dann dort öffnen statt am ⋯-Knopf
+    // point: mouse position on right-click – then open there instead of at the ⋯ button
     function toggleMenu (w, button, point) {
       if (menu && menuButton === button && !point) return closeMenu()
       closeMenu()
@@ -1554,18 +1669,18 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           type: 'button',
           role: 'menuitem',
           class: 'xw-menu-item' + (extra ? ' ' + extra : ''),
-          style: `--xw-i:${itemIndex++}`, // leicht gestaffeltes Einblenden
+          style: `--xw-i:${itemIndex++}`, // slightly staggered fade-in
           html: icon(16),
           onclick: (e) => { e.stopPropagation(); if (!run) return; closeMenu(); run() },
         }, el('span', { text })))
       }
       panel.appendChild(node)
-      // Unter dem Knopf, rechtsbündig; passt es unten nicht mehr hin, nach oben aufklappen
+      // Below the button, right-aligned; if it no longer fits below, open upwards
       const pr = panel.getBoundingClientRect()
       const br = button.getBoundingClientRect()
       const h = node.offsetHeight
       if (point) {
-        // An der Maus, aber vollständig im Panel (sonst nach links/oben verschieben)
+        // At the mouse, but fully inside the panel (otherwise shift left/up)
         const left = Math.min(Math.max(8, point.x - pr.left), pr.width - node.offsetWidth - 8)
         const top = Math.min(Math.max(8, point.y - pr.top), pr.height - h - 8)
         node.style.left = Math.round(left) + 'px'
@@ -1577,18 +1692,18 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         const spaceAbove = br.top - pr.top
         const below = spaceBelow >= h + 12 || spaceBelow >= spaceAbove
         const wanted = below ? br.bottom - pr.top + 4 : br.top - pr.top - h - 4
-        // Nie über den Rand des Panels hinaus – notfalls überdeckt das Menü den eigenen Knopf
+        // Never beyond the panel edge – if necessary the menu covers its own button
         const top = Math.min(Math.max(8, wanted), pr.height - h - 8)
         node.style.right = Math.max(8, Math.round(pr.right - br.right)) + 'px'
         node.style.top = Math.round(top) + 'px'
-        // Klappt es nach oben auf, wächst es aus der unteren Ecke (früher Klasse .is-up)
+        // When it opens upwards, it grows from the bottom corner (formerly class .is-up)
         node.style.transformOrigin = below ? 'top right' : 'bottom right'
         button.setAttribute('aria-expanded', 'true')
       }
       menu = node
       menuButton = button
       button.classList.add('is-active')
-      // Einen Frame später öffnen, damit die Transition vom geschlossenen Zustand aus läuft
+      // Open one frame later so the transition runs from the closed state
       requestAnimationFrame(() => {
         if (menu !== node) return
         node.classList.add('is-open')
@@ -1597,7 +1712,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       })
     }
 
-    // Schließen: .is-open weg (120 ms ease-in), danach aus dem DOM
+    // Close: remove .is-open (120 ms ease-in), then remove it from the DOM
     function closeMenu () {
       if (!menu) return
       const node = menu
@@ -1614,7 +1729,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     list.addEventListener('scroll', closeMenu)
 
     // -----------------------------------------------------------------------------------------
-    // Aktionen
+    // Actions
     // -----------------------------------------------------------------------------------------
 
     async function openWallet (w, switchTo) {
@@ -1626,6 +1741,28 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         else if (res.wasRunning) showNotice(T.broughtFront(name), 'ok')
         else showNotice(T.opening(name), 'ok')
         setTimeout(refresh, 5000)
+      } catch (e) {
+        fail(e)
+      }
+    }
+
+    async function moveToBackground (w) {
+      try {
+        await call('hide', w.id)
+        showNotice(T.bgMoved(T.q(labelOf(w))), 'ok')
+        setTimeout(refresh, 2000)
+      } catch (e) {
+        fail(e)
+      }
+    }
+
+    async function toggleBackground () {
+      if (!state) return
+      const on = state.settings.backgroundSync === false
+      bgToggle.setAttribute('aria-checked', String(on))
+      try {
+        await call('settings', { backgroundSync: on })
+        refresh()
       } catch (e) {
         fail(e)
       }
@@ -1708,7 +1845,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     // -----------------------------------------------------------------------------------------
-    // Adressen kopieren – aus dem Adress-Cache, die Wallet muss dafür nicht geöffnet sein
+    // Copy addresses – from the address cache, the wallet doesn't need to be open for this
     // -----------------------------------------------------------------------------------------
 
     function tickerStyle (ticker) {
@@ -1717,7 +1854,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return `background:linear-gradient(135deg,hsl(${h},45%,42%),hsl(${(h + 40) % 360},55%,30%))`
     }
 
-    // Echtes Exodus-Icon (Pfad von main.js); fehlt es oder lädt es nicht, das Kürzel als Ersatz
+    // Real Exodus icon (path from main.js); if it's missing or fails to load, the ticker as a fallback
     function coinIcon (a) {
       const fallback = () => el('div', { class: 'xw-addr-icon', style: tickerStyle(a.ticker), text: a.ticker.slice(0, 4) })
       if (!a.icon) return fallback()
@@ -1751,14 +1888,14 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         sheetAddresses = res.addresses
         sheetPortfolioNames = Array.isArray(res.portfolioNames) ? res.portfolioNames : []
         sheetSub.textContent = res.updatedAt ? T.addrSaved(ago(res.updatedAt)) : ''
-        if (sheetExport) sheetSelected = new Set(sheetPortfolios().map(([account]) => account)) // Start: alle
+        if (sheetExport) sheetSelected = new Set(sheetPortfolios().map(([account]) => account)) // start: all
         renderAddresses()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
     }
 
-    // Wallet-übergreifender Export: Auswahl = Wallets, kopiert deren Adressen als eine Liste
+    // Cross-wallet export: selection = wallets, copies their addresses as one list
     async function openCrossExport () {
       closeMenu()
       sheetWallet = null
@@ -1784,14 +1921,14 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         const res = await call('allAddresses')
         if (!sheetCross) return
         sheetAddresses = res.addresses
-        sheetSelected = new Set(sheetWallets().map(([id]) => id)) // Start: alle Wallets
+        sheetSelected = new Set(sheetWallets().map(([id]) => id)) // start: all wallets
         renderAddresses()
       } catch (e) {
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: e.message }))
       }
     }
 
-    // Zurück: Sheet gleitet rechts raus, die Hauptansicht kommt zurück (@xw:sheet läuft rückwärts)
+    // Back: the sheet slides out to the right, the main view returns (@xw:sheet runs in reverse)
     function closeSheet () {
       sheetWallet = null
       sheetCross = false
@@ -1799,20 +1936,20 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheet.setAttribute('aria-hidden', 'true')
     }
 
-    // Wallets im Datenbestand (für den wallet-übergreifenden Export), Reihenfolge wie geliefert
+    // Wallets in the data set (for the cross-wallet export), in the order delivered
     function sheetWallets () {
       const seen = new Map()
       for (const a of sheetAddresses) if (!seen.has(a.walletId)) seen.set(a.walletId, a.wallet || a.walletId)
       return [...seen.entries()]
     }
 
-    // Auswahl-Schlüssel je Adresse: Wallet-übergreifend die Wallet, sonst das Portfolio
+    // Selection key per address: the wallet when cross-wallet, otherwise the portfolio
     const groupKey = (a) => (sheetCross ? a.walletId : a.account)
     const exportGroups = () => (sheetCross ? sheetWallets() : sheetPortfolios())
 
-    // Portfolios in der Reihenfolge von Exodus (exodus_0, exodus_1, …) mit ihrem Anzeigenamen. Portfolios,
-    // die Exodus kennt, zu denen aber noch keine Adressen gespeichert sind, bekommen den Schlüssel "name:<Name>"
-    // und werden hinten angehängt – so sieht man sie trotzdem als Tab.
+    // Portfolios in Exodus order (exodus_0, exodus_1, …) with their display name. Portfolios
+    // that Exodus knows but that have no saved addresses yet get the key "name:<name>"
+    // and are appended at the end – so they still show up as a tab.
     function sheetPortfolios () {
       const seen = new Map()
       for (const a of sheetAddresses) if (!seen.has(a.account)) seen.set(a.account, a.portfolio || a.account)
@@ -1822,12 +1959,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return list
     }
 
-    // groups: [key, label] – Portfolios (pro Wallet) oder Wallets (übergreifend). Der erste Chip ist „Alle“
-    // (key null). Bleibt die Chip-Menge gleich, werden nur Zustände umgeschaltet – so laufen die Rand-
-    // Überblendung und die kleine Feder beim Einschalten (@xw:chip). Neu gebaut wird nur bei neuer Menge.
+    // groups: [key, label] – portfolios (per wallet) or wallets (cross-wallet). The first chip is "All"
+    // (key null). If the chip set stays the same, only states are toggled – so the border cross-fade
+    // and the small spring on activation run (@xw:chip). Rebuilt only when the set changes.
     function renderChips (groups, selected) {
-      // Bei einem einzelnen Portfolio im normalen Modus sind Tabs überflüssig; im Export-Modus zeigen
-      // wir sie trotzdem (Mehrfachauswahl inkl. „Alle“).
+      // With a single portfolio in normal mode tabs are pointless; in export mode we
+      // show them anyway (multi-select incl. "All").
       if (groups.length < 2 && !sheetExport) {
         addrChips.classList.add('xw-hide')
         addrChips.dataset.sig = ''
@@ -1843,7 +1980,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         }
         addrChips.replaceChildren(make(null, sheetExport ? T.exportAll : T.addrAll), ...groups.map(([key, name]) => make(key, name)))
       }
-      // „Alle“ ist exklusiv: sind alle gewählt, leuchtet nur „Alle“
+      // "All" is exclusive: if all are selected, only "All" is lit
       const allSelected = sheetExport && groups.length > 0 && groups.every(([key]) => sheetSelected.has(key))
       for (const chip of addrChips.children) {
         const key = chip.xwKey
@@ -1866,18 +2003,18 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
       const all = exportGroups().map(([k]) => k)
       const allSelected = all.length > 0 && all.every((k) => sheetSelected.has(k))
-      if (key === null) sheetSelected = new Set(all) // „Alle“ gewählt
-      else if (allSelected) sheetSelected = new Set([key]) // aus „Alle“ heraus: nur dieses
+      if (key === null) sheetSelected = new Set(all) // "All" selected
+      else if (allSelected) sheetSelected = new Set([key]) // coming from "All": only this one
       else {
         if (sheetSelected.has(key)) sheetSelected.delete(key)
         else sheetSelected.add(key)
-        if (!sheetSelected.size) sheetSelected = new Set(all) // nichts mehr aktiv → wieder „Alle“
+        if (!sheetSelected.size) sheetSelected = new Set(all) // nothing active any more → back to "All"
       }
       renderAddresses()
     }
 
-    // Adressen, die aktuell exportiert würden: gewählte Portfolios + Suchfilter, doppelte Adressen raus.
-    // (ETH und alle ERC-20-Token teilen sich eine Adresse – die soll nur einmal in der Liste stehen.)
+    // Addresses that would currently be exported: selected portfolios + search filter, duplicates removed.
+    // (ETH and all ERC-20 tokens share one address – it should appear only once in the list.)
     function exportMatches () {
       const q = addrFilter.value.trim().toLowerCase()
       const seen = new Set()
@@ -1892,8 +2029,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       return out
     }
 
-    // Kopieren → Lichtschweif, grüner Rand, Label wechselt; nach 1800 ms zurück. Ein erneuter Klick
-    // während „Copied“ verlängert nur den Timer (XW.confirm), die Animation startet nicht neu.
+    // Copy → light trail, green border, label switches; back after 1800 ms. Another click
+    // during "Copied" only extends the timer (XW.confirm), the animation doesn't restart.
     async function doExport () {
       const list = exportMatches()
       if (!list.length) return showNotice(T.exportNone, 'error')
@@ -1916,7 +2053,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         return
       }
 
-      // Export-Modus: nach Auswahl filtern (Portfolios bzw. Wallets), Kopieren-Knopf mit Anzahl
+      // Export mode: filter by selection (portfolios or wallets), copy button with count
       if (sheetExport) {
         const groups = exportGroups()
         renderChips(groups, null)
@@ -1929,11 +2066,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           return
         }
         const order = new Map(groups.map(([key], i) => [key, i]))
-        // Übergreifend: nach Wallet, dann Portfolio; sonst nach Portfolio
+        // Cross-wallet: by wallet, then portfolio; otherwise by portfolio
         const rows = list.slice().sort((x, y) =>
           (order.get(groupKey(x)) - order.get(groupKey(y))) ||
           x.account.localeCompare(y.account, 'en', { numeric: true }))
-        // Wallets mit mehreren Portfolios: Portfolio pro Zeile zeigen
+        // Wallets with several portfolios: show the portfolio on each row
         const multiPortfolioWallets = new Set()
         if (sheetCross) {
           const byWallet = new Map()
@@ -1973,7 +2110,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         addrList.replaceChildren(el('div', { class: 'xw-empty', text: unsaved ? T.addrPortfolioEmpty : T.addrNoMatch }))
         return
       }
-      // Bei "Alle" nach Portfolio gruppieren (mit Überschrift); bei einem gewählten Portfolio flache Liste
+      // With "All", group by portfolio (with heading); with a selected portfolio, a flat list
       const grouped = !selected && portfolios.length > 1
       const order = new Map(portfolios.map(([account], i) => [account, i]))
       if (grouped) hits.sort((x, y) => order.get(x.account) - order.get(y.account))
@@ -1990,11 +2127,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       nodes.forEach((n, i) => n.style.setProperty('--xw-i', i))
     }
 
-    // showPortfolio: Portfolio-Namen zusätzlich pro Zeile zeigen (z. B. im wallet-übergreifenden Export)
+    // showPortfolio: also show the portfolio name on each row (e.g. in the cross-wallet export)
     function addressRow (a, showPortfolio) {
       const multiPortfolio = showPortfolio !== undefined ? showPortfolio : sheetPortfolios().length > 1
-      // Kopier-Bestätigung der Zeile (@xw:row): Adresse ↑ raus, „Address copied“ ↑ rein, Icon morpht
-      // zum Häkchen; hält 1400 ms. Beide Texte liegen im selben Grid-Feld (.xw-addr-sub) – kein Springen.
+      // Row copy confirmation (@xw:row): address ↑ out, "Address copied" ↑ in, icon morphs
+      // into a checkmark; holds 1400 ms. Both texts sit in the same grid cell (.xw-addr-sub) – no jumping.
       const row = el('div', { class: 'xw-addr xw-addr--cp', role: 'button', tabindex: '0', title: a.address },
         coinIcon(a),
         el('div', { class: 'xw-addr-body' },
@@ -2022,12 +2159,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     // -----------------------------------------------------------------------------------------
-    // Formular
+    // Form
     // -----------------------------------------------------------------------------------------
 
-    // buttons: [{ text, run: async (value) => {} }] – der erste ist der Hauptknopf (auch für Enter)
-    // Weitere Knopf-Optionen: danger (rot), free (nicht an confirmValue gebunden), keepOpen (Formular bleibt).
-    // confirmValue: Knöpfe erst aktiv, wenn genau dieser Text eingetippt ist (z. B. Wallet-Name beim Löschen).
+    // buttons: [{ text, run: async (value) => {} }] – the first one is the main button (also for Enter)
+    // More button options: danger (red), free (not bound to confirmValue), keepOpen (form stays open).
+    // confirmValue: buttons only become active once exactly this text is typed (e.g. wallet name when deleting).
     let formConfirm = null
     let gatedNodes = []
     function updateGate () {
@@ -2035,8 +2172,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       if (ok) input.classList.remove('is-error')
       for (const n of gatedNodes) {
         if (n.classList.contains('is-danger')) {
-          // Löschen-Knopf: aria-disabled statt disabled – sonst bekäme er keine Klicks für das Schütteln.
-          // Beim Übergang zu „Name stimmt“ federt er einmal (@xw:delete .is-armed).
+          // Delete button: aria-disabled instead of disabled – otherwise it wouldn't get clicks for the shake.
+          // On the transition to "name matches" it springs once (@xw:delete .is-armed).
           const armed = ok && !formBusy
           const wasArmed = n.getAttribute('aria-disabled') === 'false'
           n.setAttribute('aria-disabled', String(!armed))
@@ -2091,8 +2228,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     async function runForm (button) {
       if (formBusy) return
       if (!button.free && !gateOpen()) {
-        // Falscher oder fehlender Name beim Löschen: Feld schüttelt kurz, roter Rand, Fokus zurück.
-        // (main.js prüft den Namen beim Löschen ohnehin noch einmal.)
+        // Wrong or missing name when deleting: the field shakes briefly, red border, focus back.
+        // (main.js checks the name again on delete anyway.)
         if (button.danger) {
           input.classList.add('is-error')
           XW.once(input, 'xw-shake')
@@ -2185,7 +2322,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         const res = await call('rename', w.id, name, options)
         showNotice(T.renameDone(T.q(res.name)), 'ok')
       }
-      // Standard-Wallet: nur Anzeigename, kein Schließen nötig
+      // Default wallet: display name only, no closing needed
       if (w.isStandard) {
         return showForm({
           title: T.renameTitle(T.q(labelOf(w))),
@@ -2228,12 +2365,12 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     }
 
     // -----------------------------------------------------------------------------------------
-    // Geld eingegangen (@xw:notify). main.js schickt den Eingang nur an das fokussierte Fenster und nie
-    // an das Fenster der empfangenden Wallet selbst – dort zeigt Exodus ihn mit eigener Anzeige und Ton.
+    // Money received (@xw:notify). main.js sends the incoming payment only to the focused window and never
+    // to the receiving wallet's own window – Exodus shows it there with its own display and sound.
     // -----------------------------------------------------------------------------------------
 
-    // Exodus' eigener Eingangston, für jede Wallet dieselbe Datei (src/static/media/audio/receive.wav,
-    // derselbe Pfad, den Exodus selbst nutzt). Einmal laden, danach wiederverwenden.
+    // Exodus' own receive sound, the same file for every wallet (src/static/media/audio/receive.wav,
+    // the same path Exodus itself uses). Load once, then reuse.
     const receiveSound = new Audio('media/audio/receive.wav')
     receiveSound.preload = 'auto'
 
@@ -2242,19 +2379,51 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     function formatAmount (n, ticker) {
       const f = (opts) => new Intl.NumberFormat(intlLocale(), opts).format(n)
       let text = f({ maximumFractionDigits: 8 })
-      if (!/[1-9]/.test(text)) text = f({ maximumSignificantDigits: 4 }) // Kleinstbeträge (z. B. Token mit 18 Stellen)
+      if (!/[1-9]/.test(text)) text = f({ maximumSignificantDigits: 4 }) // tiny amounts (e.g. tokens with 18 decimals)
       return '+' + text + ' ' + ticker
     }
 
+    // New wallet finished setting up: "Ready – everything loaded" card (no sound), also in its own window
+    async function onReady (ev) {
+      if (ev.language) applyLanguage(ev.language)
+      const name = ev.wallet || T.standard
+      const here = state && state.wallets.find((w) => w.isCurrent)
+      const own = here && ev.walletId && here.id === ev.walletId
+      const card = XW.nt.notify(ntStack, {
+        wallet: { name, img: ev.avatar || 'svg/brand/exodus-logomark.svg' },
+        coin: { name: T.readySub, ticker: '', icon: READY_ICON },
+        amount: T.readyTitle,
+        value: null,
+        portfolio: null,
+        time: ago(new Date(ev.at).toISOString()),
+        hidden: false,
+      }, {
+        sound: null,
+        // Click: bring another wallet to the front; in its own window, open the sidebar
+        onOpen: () => { if (own) { if (!open) openPanel() } else if (ev.walletId) openWallet({ id: ev.walletId, label: name }, false) },
+      })
+      if (!ev.avatar) card.querySelector('.xw-nt-av').classList.add('is-exodus')
+      card.classList.add('is-ready')
+      XW.nt.layout(ntStack) // two-line hint → re-measure the height
+      if (open) {
+        await refresh()
+        const item = ev.walletId && itemFor(ev.walletId)
+        if (item) XW.nt.markWallet(item, 0)
+      }
+    }
+
     async function onReceived (ev) {
+      if (ev && ev.type === 'ready') return onReady(ev)
       if (!ev || typeof ev.amount !== 'number' || !ev.ticker) return
-      // Sicherheitsnetz: Eingang auf der Wallet dieses Fensters → nichts (keine Karte, kein Punkt, kein Glimmen)
+      // Safety net: incoming payment on this window's wallet → nothing (no card, no dot, no glow)
       const here = state && state.wallets.find((w) => w.isCurrent)
       if (here && ev.walletId && here.id === ev.walletId) return
       if (ev.language) applyLanguage(ev.language)
       const hidden = !!ev.hidden
       const name = ev.wallet || T.standard
-      const sound = ev.sound && ev.sound.on === false ? null : receiveSound
+      // Exodus plays receive.wav itself on every incoming payment – also in a background wallet's window. If it
+      // already did (main.js keeps count), the card stays silent: the same sound, exactly once.
+      const sound = ev.exodusSound || (ev.sound && ev.sound.on === false) ? null : receiveSound
       if (sound && ev.sound && typeof ev.sound.volume === 'number') sound.volume = ev.sound.volume
       const card = XW.nt.notify(ntStack, {
         wallet: { name, img: ev.avatar || 'svg/brand/exodus-logomark.svg' },
@@ -2266,13 +2435,13 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         hidden,
       }, {
         sound,
-        // Öffnen bzw. nach vorne holen – dieselbe Aktion wie ein Klick auf die Wallet-Zeile
+        // Open or bring to the front – the same action as a click on the wallet row
         onOpen: () => { if (ev.walletId) openWallet({ id: ev.walletId, label: name }, false) },
       })
       if (!ev.avatar) card.querySelector('.xw-nt-av').classList.add('is-exodus')
 
       if (open) {
-        // Leiste offen: Zeile glimmt sofort, der Saldo rollt beim Neuzeichnen (bei verborgenen Kontoständen nicht)
+        // Sidebar open: the row glows right away, the balance rolls on redraw (not with hidden balances)
         await refresh()
         const item = ev.walletId && itemFor(ev.walletId)
         if (item) XW.nt.markWallet(item, 0)
@@ -2283,29 +2452,29 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
     }
     ipcRenderer.on('exodus-wallets:received', (_event, ev) => {
-      onReceived(ev).catch((e) => debug('Eingang-Anzeige fehlgeschlagen: ' + e.message))
+      onReceived(ev).catch((e) => debug('Incoming-payment display failed: ' + e.message))
     })
 
-    // Beim Zurückwechseln ins Fenster sofort die Stände der anderen Wallets nachladen
+    // When switching back to the window, reload the other wallets' balances right away
     window.addEventListener('focus', () => { if (open) refresh() })
 
-    // Anzahl der Wallets am Knopf anzeigen und die Sprache früh übernehmen
+    // Show the wallet count on the button and pick up the language early
     setTimeout(() => { if (!state) refresh() }, 8000)
   }
 
   if (isExodusUi()) {
-    debug('isExodusUi=true, starte UI...')
+    debug('isExodusUi=true, starting UI...')
     if (document.readyState === 'loading') {
-      debug('warte auf DOMContentLoaded...')
+      debug('waiting for DOMContentLoaded...')
       document.addEventListener('DOMContentLoaded', () => {
         debug('DOMContentLoaded')
         start()
       }, { once: true })
     } else {
-      debug('DOM bereits geladen')
+      debug('DOM already loaded')
       start()
     }
   } else {
-    debug('isExodusUi=false, UI wird NICHT gestartet')
+    debug('isExodusUi=false, UI will NOT be started')
   }
 }
