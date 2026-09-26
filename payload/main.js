@@ -21,7 +21,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
 
-const VERSION = '1.0.2'
+const VERSION = '1.1.0'
 const TAG = '[exodus-wallets]'
 const PRELOAD = path.join(__dirname, 'preload.js')
 
@@ -131,6 +131,9 @@ const MESSAGES = {
     notifyReadyTitle: (wallet) => `${wallet} is ready`,
     notifyReadyBody: 'Everything loaded – you can close it.',
     copyBlocked: 'Copying is blocked for this wallet – its saved addresses failed the check. Re-read them from Exodus first.',
+    copyUnverified: 'Copying is paused for this wallet – its saved addresses aren’t confirmed yet. Re-read them from Exodus or open the wallet once.',
+    exportBlocked: 'Export is blocked – some of these addresses aren’t confirmed or failed the check. Re-read them from Exodus first.',
+    guardKeyMissing: 'This protection can’t be switched off right now – its key could not be loaded. Please try again in a moment.',
   },
   de: {
     standard: 'Standard',
@@ -171,6 +174,9 @@ const MESSAGES = {
     notifyReadyTitle: (wallet) => `${wallet} ist bereit`,
     notifyReadyBody: 'Alles geladen – du kannst sie schließen.',
     copyBlocked: 'Kopieren ist für diese Wallet gesperrt – ihre gespeicherten Adressen haben die Prüfung nicht bestanden. Lies sie zuerst neu aus Exodus ein.',
+    copyUnverified: 'Kopieren ist für diese Wallet pausiert – ihre gespeicherten Adressen sind noch nicht bestätigt. Lies sie neu aus Exodus ein oder öffne die Wallet einmal.',
+    exportBlocked: 'Export gesperrt – einige dieser Adressen sind nicht bestätigt oder haben die Prüfung nicht bestanden. Lies sie zuerst neu aus Exodus ein.',
+    guardKeyMissing: 'Dieser Schutz lässt sich gerade nicht ausschalten – sein Schlüssel konnte nicht geladen werden. Bitte gleich noch einmal versuchen.',
   },
 }
 
@@ -242,8 +248,8 @@ function describe (w, settings) {
     running,
     background: !!(live && live.hidden),
     backgroundOff: backgroundOff(w.dir),
-    // Address Guard: saved addresses failed the check (seal broken or different from Exodus)
-    addressCheck: settings && settings.addressCheck === false ? null : (addressVerdict(w.dir).ok ? null : 'failed'),
+    // Address Guard: 'failed' (seal broken or different from Exodus) | 'unverified' (not confirmed yet) | null
+    addressCheck: guardFlag(w.dir, settings),
     status: live ? { state: live.state, left: live.left || 0 } : null,
     setup: setup ? { kind: setup.kind || null, since: setup.since || null } : null,
     hasWallet: walletExists,
@@ -1197,75 +1203,290 @@ async function snapshotBalance (wc) {
 // ---------------------------------------------------------------------------------------------
 // Address Guard – integrity seal over the saved receive addresses. Clipper malware swaps crypto
 // addresses (in files or in the clipboard) so payments go to the attacker. When a wallet's own window
-// saves its addresses, it seals them: HMAC-SHA256 over all addresses (account|asset|address, sorted)
-// with a random 32-byte key per wallet. The key is protected by the operating system via Electron's
-// safeStorage (Windows DPAPI / macOS Keychain) and stored encrypted as wallet-switcher-seal.key. Every
-// reader checks the seal before showing/copying/exporting. Each wallet's own window also compares the
-// saved list with Exodus on every address refresh (see fetchAddresses): a broken seal or a difference
-// that isn't a legitimate Exodus change marks the wallet as tampered until the user re-reads.
+// saves its addresses, it seals them: HMAC-SHA256 over all addresses (account|asset|address, sorted).
+// All wallets share ONE random 32-byte key: seal.key in the Exodus-Wallets folder, protected by the
+// operating system – Windows DPAPI for the current user (any Exodus instance of this user can read it,
+// whatever its data folder), macOS Keychain / Linux libsecret via Electron's safeStorage (that entry
+// belongs to the app, not to the data folder, so all instances share it too). Every reader checks the
+// seal before showing/copying/exporting, and only a seal that verifies counts ("fail closed"). Each
+// wallet's own window also compares the saved list with Exodus on every address refresh (see
+// fetchAddresses): a broken seal or a difference that isn't a legitimate Exodus change marks the wallet
+// as tampered until the user re-reads.
+// Up to v1.0.2 every wallet had its own key (wallet-switcher-seal.key, safeStorage). On Windows safeStorage
+// is bound to the data folder's own Chromium key, so only the wallet's own window could read it and all
+// other windows silently skipped the check. Those v1 seals are migrated by the wallet's own window.
 // ---------------------------------------------------------------------------------------------
 
-const SEAL_KEY_FILE = 'wallet-switcher-seal.key'
+const SEAL_KEY_FILE = 'seal.key' // the shared key, in the Exodus-Wallets folder
+const LEGACY_SEAL_KEY_FILE = 'wallet-switcher-seal.key' // v1: per-wallet key in the wallet's data folder
 const REREAD_FILE = 'wallet-switcher-reread.json' // progress/result of a re-read requested by another window
-const sealKeys = new Map()
+const SEAL_KEY_WAIT_MS = 15 * 1000 // callers wait at most this long for the key
+const SEAL_KEY_RETRY_MS = 60 * 1000 // a key that couldn't be loaded/created is tried again after this
+const DPAPI_TIMEOUT_MS = 14 * 1000
 
-function encryptSealKey (hex) {
-  try {
-    if (safeStorage && safeStorage.isEncryptionAvailable()) return Buffer.concat([Buffer.from('XWS1'), safeStorage.encryptString(hex)])
-  } catch (e) {}
-  // No OS key store (e.g. Linux without a keyring): plain key – still catches edits by programs that don't know it
-  return Buffer.from('XWP1' + hex)
-}
-function decryptSealKey (buf) {
-  const tag = buf.slice(0, 4).toString('latin1')
-  if (tag === 'XWS1') return safeStorage.decryptString(buf.slice(4))
-  if (tag === 'XWP1') return buf.slice(4).toString('latin1')
-  throw new Error('unknown seal key format')
-}
-// The wallet's key (hex). create: make one if there is none (or if the existing one can't be read –
-// e.g. the folder came from another computer or user account). Throws if it exists but can't be read.
-function sealKey (dir, create) {
-  const file = path.join(dir, SEAL_KEY_FILE)
-  let st = null
-  try { st = fs.statSync(file) } catch (e) {}
-  if (st) {
-    const hit = sealKeys.get(file)
-    if (hit && hit.mtime === st.mtimeMs) return hit.key
+// Windows DPAPI through PowerShell (Electron has no binding for it). The script is fixed; the data goes in
+// via stdin and the result comes back as base64 on stdout – nothing variable is ever part of the command.
+const DPAPI_PS = `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
+$data = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())
+$entropy = [Text.Encoding]::UTF8.GetBytes('xw-seal-v2')
+$scope = [Security.Cryptography.DataProtectionScope]::CurrentUser
+if ($env:XW_DPAPI -eq 'protect') { $out = [Security.Cryptography.ProtectedData]::Protect($data, $entropy, $scope) }
+else { $out = [Security.Cryptography.ProtectedData]::Unprotect($data, $entropy, $scope) }
+[Console]::Out.Write([Convert]::ToBase64String($out))
+`
+function dpapi (op, data) {
+  return new Promise((resolve, reject) => {
+    let child
     try {
-      const key = decryptSealKey(fs.readFileSync(file))
-      if (!/^[0-9a-f]{64}$/.test(key)) throw new Error('bad seal key')
-      sealKeys.set(file, { mtime: st.mtimeMs, key })
-      return key
+      child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', DPAPI_PS],
+        { windowsHide: true, env: { ...process.env, XW_DPAPI: op } })
     } catch (e) {
-      if (!create) throw e
+      return reject(e)
     }
-  } else if (!create) {
-    return null
+    let out = ''
+    let err = ''
+    const timer = setTimeout(() => {
+      const e = new Error('DPAPI timeout')
+      e.timeout = true
+      try { child.kill() } catch (x) {}
+      reject(e)
+    }, DPAPI_TIMEOUT_MS)
+    child.stdout.on('data', (d) => { out += d })
+    child.stderr.on('data', (d) => { err += d })
+    child.on('error', (e) => { clearTimeout(timer); reject(e) })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      const buf = Buffer.from(out.trim(), 'base64')
+      if (code === 0 && buf.length) resolve(buf)
+      else reject(new Error(`DPAPI ${op} failed (exit ${code}): ${err.trim().split(/\r?\n/)[0] || 'no output'}`))
+    })
+    child.stdin.on('error', () => {})
+    child.stdin.end(data.toString('base64'))
+  })
+}
+
+// File format: 4-byte tag + payload. XWD1 = DPAPI blob (Windows), XWS1 = safeStorage (macOS/Linux),
+// XWP1 = plain hex – only when the OS has no key store (still catches edits by programs that don't know it).
+let plainKeyLogged = false
+async function protectSealKey (key) {
+  if (process.platform === 'win32') {
+    try {
+      return Buffer.concat([Buffer.from('XWD1'), await dpapi('protect', key)])
+    } catch (e) {
+      if (e.timeout) throw e // slow, not missing: try again later rather than store the key unprotected
+      debug('Address seal key: Windows DPAPI not available – ' + e.message)
+    }
+  } else {
+    try {
+      if (safeStorage && safeStorage.isEncryptionAvailable()) return Buffer.concat([Buffer.from('XWS1'), safeStorage.encryptString(key.toString('hex'))])
+    } catch (e) {
+      debug('Address seal key: OS key store failed – ' + e.message)
+    }
   }
-  const key = crypto.randomBytes(32).toString('hex')
-  fs.writeFileSync(file, encryptSealKey(key))
-  sealKeys.delete(file)
+  if (!plainKeyLogged) {
+    plainKeyLogged = true
+    debug('Address seal key: no OS key store available – the key is stored unprotected')
+  }
+  return Buffer.from('XWP1' + key.toString('hex'))
+}
+async function unprotectSealKey (buf) {
+  const tag = buf.slice(0, 4).toString('latin1')
+  let key = null
+  if (tag === 'XWD1' && process.platform === 'win32') key = await dpapi('unprotect', buf.slice(4))
+  else if (tag === 'XWS1' && process.platform !== 'win32' && safeStorage) key = Buffer.from(safeStorage.decryptString(buf.slice(4)), 'hex')
+  else if (tag === 'XWP1' && /^[0-9a-f]{64}$/.test(buf.slice(4).toString('latin1'))) key = Buffer.from(buf.slice(4).toString('latin1'), 'hex')
+  if (!key || key.length !== 32) throw new Error('seal key not readable (format ' + tag.replace(/[^\w]/g, '?') + ')')
   return key
 }
+
+// Create the file only if it doesn't exist yet, atomically (nobody ever reads a half-written key): write a
+// temp file, then hard-link it into place – that fails if the name exists. File systems without hard links
+// fall back to an exclusive create (flag 'wx'). Returns true (created), false (already there) or an Error.
+function createExclusive (file, data) {
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }) } catch (e) {}
+  const tmp = `${file}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`
+  try {
+    fs.writeFileSync(tmp, data, { flag: 'wx' })
+    try {
+      fs.linkSync(tmp, file)
+      return true
+    } catch (e) {
+      if (e.code === 'EEXIST') return false
+    }
+    fs.writeFileSync(file, data, { flag: 'wx' })
+    return true
+  } catch (e) {
+    return e.code === 'EEXIST' ? false : e
+  } finally {
+    try { fs.unlinkSync(tmp) } catch (e) {}
+  }
+}
+
+const sealKeyFile = () => globalFile(SEAL_KEY_FILE)
+const keyId = (key) => crypto.createHash('sha256').update(key).digest('hex').slice(0, 16)
+const fileStamp = (file) => { try { const st = fs.statSync(file); return st.mtimeMs + ':' + st.size } catch (e) { return null } }
+
+// Read the shared key – or create it if there is none. An existing key is NEVER overwritten here, not even
+// when it can't be read (that only happens on an explicit "Re-read from Exodus", see replaceUnreadableSealKey).
+async function loadSealKey () {
+  if (process.platform !== 'win32' && typeof app.isReady === 'function' && !app.isReady()) await app.whenReady() // safeStorage needs a ready app
+  const file = sealKeyFile()
+  for (let attempt = 0; attempt < 30; attempt++) {
+    let buf = null
+    try {
+      buf = fs.readFileSync(file)
+    } catch (e) {
+      if (e.code !== 'ENOENT') return { state: 'unreadable', stamp: fileStamp(file), why: e.message }
+    }
+    if (buf) {
+      const stamp = fileStamp(file)
+      // Only possible with the 'wx' fallback: another window is writing it right now
+      if (buf.length < 8 && attempt < 20) { await sleep(150); continue }
+      try {
+        const key = await unprotectSealKey(buf)
+        return { state: 'ok', key, kid: keyId(key), stamp, why: 'loaded' }
+      } catch (e) {
+        return { state: e.timeout ? 'unavailable' : 'unreadable', stamp, why: e.message }
+      }
+    }
+    const key = crypto.randomBytes(32)
+    let data
+    try {
+      data = await protectSealKey(key)
+    } catch (e) {
+      return { state: 'unavailable', stamp: fileStamp(file), why: e.message }
+    }
+    const made = createExclusive(file, data)
+    if (made === true) return { state: 'ok', key, kid: keyId(key), stamp: fileStamp(file), why: 'created' }
+    if (made !== false) return { state: 'unavailable', stamp: fileStamp(file), why: made.message }
+    // Another window created it at the same moment: use that one (next round reads it)
+  }
+  return { state: 'unavailable', stamp: fileStamp(file), why: 'gave up' }
+}
+
+// In-memory copy of the shared key, loaded once per process (and again whenever seal.key changes on disk).
+// state: 'loading' | 'ok' | 'unreadable' (exists, can't be decrypted here) | 'unavailable' (couldn't be
+// created or loaded in time – tried again after SEAL_KEY_RETRY_MS)
+let sealKey = { state: 'loading', key: null, kid: null, stamp: null, at: 0 }
+let sealKeyRun = null
+let sealKeyStarted = false
+function startSealKeyLoad () {
+  sealKeyStarted = true
+  sealKey = { state: 'loading', key: null, kid: null, stamp: null, at: Date.now() }
+  const run = loadSealKey().catch((e) => ({ state: 'unavailable', stamp: null, why: e.message })).then((res) => {
+    if (sealKeyRun !== run) return sealKey
+    sealKeyRun = null
+    sealKey = { state: res.state, key: res.key || null, kid: res.kid || null, stamp: res.stamp || null, at: Date.now() }
+    debug(res.state === 'ok' ? `Address seal key ${res.why}` : `Address seal key ${res.state}: ${res.why}`)
+    return sealKey
+  })
+  sealKeyRun = run
+  return run
+}
+function refreshSealKey () {
+  if (sealKeyRun) return
+  if (!sealKeyStarted) return startSealKeyLoad()
+  const stamp = fileStamp(sealKeyFile())
+  if (stamp !== sealKey.stamp || (sealKey.state === 'unavailable' && Date.now() - sealKey.at > SEAL_KEY_RETRY_MS)) startSealKeyLoad()
+}
+// The shared key: { state, key, kid }. Waits for a load in progress, but at most SEAL_KEY_WAIT_MS – a slower
+// load keeps going and is used as soon as it's done. Everything that verifies, copies, exports or seals awaits this.
+function sealKeyReady () {
+  refreshSealKey()
+  const run = sealKeyRun
+  if (!run) return Promise.resolve(sealKey)
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(sealKey), SEAL_KEY_WAIT_MS)
+    run.then((k) => { clearTimeout(timer); resolve(k) })
+  })
+}
+// Synchronous view (describe, checkSeal, readSettings). Doesn't start the first load – startup does that.
+function sealKeyNow () {
+  if (sealKeyStarted) refreshSealKey()
+  return sealKey
+}
+
+// "Re-read from Exodus" while the key exists but can't be read here (e.g. the Exodus-Wallets folder came
+// from another computer or user account): the only case in which an existing key is replaced. Seals made
+// with the old key then count as "unverified" (not tampered) until each wallet's own window has compared
+// its list with Exodus and sealed it again.
+async function replaceUnreadableSealKey () {
+  const cur = await sealKeyReady()
+  const file = sealKeyFile()
+  if (cur.state !== 'unreadable' || fileStamp(file) !== cur.stamp) return cur
+  const key = crypto.randomBytes(32)
+  const tmp = `${file}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`
+  try {
+    fs.writeFileSync(tmp, await protectSealKey(key))
+    fs.renameSync(tmp, file)
+    sealKey = { state: 'ok', key, kid: keyId(key), stamp: fileStamp(file), at: Date.now() }
+    debug('Address seal key: the existing key could not be read – replaced by a new one (Re-read from Exodus)')
+  } catch (e) {
+    try { fs.unlinkSync(tmp) } catch (x) {}
+    debug('Address seal key: replacing failed – ' + e.message)
+  }
+  return sealKey
+}
+
+const sealLines = (addresses) => addresses.map((a) => [a.account, a.asset, a.address].join('|')).sort()
 function sealMac (key, addresses) {
-  const lines = addresses.map((a) => [a.account, a.asset, a.address].join('|')).sort()
-  return crypto.createHmac('sha256', Buffer.from(key, 'hex')).update('xw-seal-v1\n' + lines.join('\n')).digest('hex')
+  return crypto.createHmac('sha256', key).update('xw-seal-v2\n' + sealLines(addresses).join('\n')).digest('hex')
 }
-function makeSeal (dir, addresses) {
-  return { v: 1, mac: sealMac(sealKey(dir, true), addresses), at: new Date().toISOString() }
+// k = the shared key from sealKeyReady()
+function makeSeal (k, addresses) {
+  return { v: 2, kid: k.kid, mac: sealMac(k.key, addresses), at: new Date().toISOString() }
 }
-// 'ok' | 'broken' | 'none' (never sealed) | 'unknown' (key exists but the OS key store can't read it)
+function macEqual (a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !/^[0-9a-f]{64}$/.test(a) || !/^[0-9a-f]{64}$/.test(b)) return false
+  return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'))
+}
+const isLegacySeal = (seal) => !!seal && typeof seal === 'object' && seal.v === 1 && typeof seal.mac === 'string' && /^[0-9a-f]{64}$/.test(seal.mac)
+// 'none' (nothing saved) | 'ok' | 'broken' (malformed seal, or wrong MAC for the current key) |
+// 'unverified' (no seal, an old v1 seal, sealed with another key, key missing/unreadable/not loaded yet)
 function checkSeal (dir, cache) {
   const list = cache && Array.isArray(cache.addresses) ? cache.addresses : []
   if (!list.length) return 'none'
-  let key
-  try { key = sealKey(dir, false) } catch (e) { return 'unknown' }
   const seal = cache.addressesSeal
-  if (!key) return seal ? 'broken' : 'none' // a seal without its key: the key file was removed
-  if (!seal || typeof seal.mac !== 'string' || !/^[0-9a-f]{64}$/.test(seal.mac)) return 'broken' // key but no seal: seal removed
-  const want = Buffer.from(sealMac(key, list), 'hex')
-  const got = Buffer.from(seal.mac, 'hex')
-  return crypto.timingSafeEqual(want, got) ? 'ok' : 'broken'
+  if (seal == null) return 'unverified'
+  if (isLegacySeal(seal)) return 'unverified' // only the wallet's own window can check (and migrate) it
+  if (typeof seal !== 'object' || seal.v !== 2 || typeof seal.kid !== 'string' || !/^[0-9a-f]{16}$/.test(seal.kid) ||
+    typeof seal.mac !== 'string' || !/^[0-9a-f]{64}$/.test(seal.mac)) return 'broken'
+  const k = sealKeyNow()
+  if (k.state !== 'ok' || seal.kid !== k.kid) return 'unverified'
+  try {
+    return macEqual(sealMac(k.key, list), seal.mac) ? 'ok' : 'broken'
+  } catch (e) {
+    return 'broken' // addresses that can't even be read as a list
+  }
+}
+// v1 seal, checked with the wallet's old per-wallet key – which only its own window can decrypt on Windows.
+// Called only from fetchAddresses (own window) for isLegacySeal() seals: 'ok' | 'broken' | 'unverified'.
+function checkLegacySeal (dir, cache) {
+  let hex = null
+  try {
+    const buf = fs.readFileSync(path.join(dir, LEGACY_SEAL_KEY_FILE))
+    const tag = buf.slice(0, 4).toString('latin1')
+    if (tag === 'XWS1' && safeStorage) hex = safeStorage.decryptString(buf.slice(4))
+    else if (tag === 'XWP1') hex = buf.slice(4).toString('latin1')
+  } catch (e) {}
+  if (typeof hex !== 'string' || !/^[0-9a-f]{64}$/.test(hex)) return 'unverified'
+  try {
+    const want = crypto.createHmac('sha256', Buffer.from(hex, 'hex')).update('xw-seal-v1\n' + sealLines(cache.addresses).join('\n')).digest('hex')
+    return macEqual(want, cache.addressesSeal.mac) ? 'ok' : 'broken'
+  } catch (e) {
+    return 'broken'
+  }
+}
+// After the first v2 seal the old per-wallet key isn't needed anymore
+function removeLegacySealKey () {
+  const file = path.join(currentDir(), LEGACY_SEAL_KEY_FILE)
+  if (!exists(file)) return
+  try {
+    fs.unlinkSync(file)
+    debug(`Address check: ${currentWalletLabel()} moved to the shared seal key, old key removed`)
+  } catch (e) {}
 }
 // Saved vs. fresh from Exodus, per portfolio and coin – only entries present in both
 function addressDiffs (saved, fresh) {
@@ -1277,14 +1498,25 @@ function addressDiffs (saved, fresh) {
   }
   return out
 }
-// Result of the check for one wallet (any window may ask): { ok, reason, diffs, changes }
+// Result of the check for one wallet (any window may ask): { ok, reason, diffs, changes, pending }.
+// Only a verified seal (or nothing saved at all) passes. reason 'seal' / 'exodus' = tampered (red);
+// 'unverified' = not confirmed yet (calm, but blocked just the same); pending = the key is still loading.
 function addressVerdict (dir) {
   const cache = readJson(path.join(dir, CACHE_FILE)) || {}
   const g = cache.addressGuard
   if (g && g.state === 'tampered') return { ok: false, reason: g.reason === 'seal' ? 'seal' : 'exodus', diffs: Array.isArray(g.diffs) ? g.diffs : [] }
-  if (checkSeal(dir, cache) === 'broken') return { ok: false, reason: 'seal', diffs: [] }
+  const seal = checkSeal(dir, cache)
+  if (seal === 'broken') return { ok: false, reason: 'seal', diffs: [] }
+  if (seal === 'unverified') return { ok: false, reason: 'unverified', diffs: [], pending: sealKeyNow().state === 'loading' }
   const recent = g && g.state === 'changed' && Date.now() - Date.parse(g.at || 0) < 24 * 60 * 60 * 1000
   return { ok: true, changes: recent && Array.isArray(g.changes) ? g.changes : [] }
+}
+// For the wallet list: null (fine, check off, or key still loading) | 'failed' (red) | 'unverified' (calm)
+function guardFlag (dir, settings) {
+  if (settings && settings.addressCheck === false) return null
+  const v = addressVerdict(dir)
+  if (v.ok || v.pending) return null
+  return v.reason === 'unverified' ? 'unverified' : 'failed'
 }
 
 let lastAddressesAt = 0
@@ -1310,18 +1542,23 @@ async function fetchAddresses (wc, { repair = false } = {}) {
   logStatus('Addresses', `ok (${res.addresses.length}) – ` + (Object.entries(perPortfolio).map(([p, n]) => `${p}: ${n}`).join(', ') || 'no portfolios'))
   const fresh = res.addresses
   if (!fresh.length) return 0
-  const prev = readJson(path.join(currentDir(), CACHE_FILE)) || {}
+  let k = await sealKeyReady()
+  // Only the explicit repair may replace a key that exists but can't be read here
+  if (repair && k.state === 'unreadable') k = await replaceUnreadableSealKey()
+  const file = path.join(currentDir(), CACHE_FILE)
+  const prev = readJson(file) || {}
   const saved = Array.isArray(prev.addresses) ? prev.addresses : []
   const now = new Date().toISOString()
   const patch = { addresses: fresh, addressesAt: now }
   if (repair) {
     patch.addressGuard = null
-    debug(`Address check: ${currentWalletLabel()} re-read from Exodus and re-sealed`)
   } else if (saved.length) {
-    const seal = checkSeal(currentDir(), prev)
-    const diffs = addressDiffs(saved, fresh)
     // Already flagged: stays blocked (and the evidence stays on disk) until the user re-reads
     if (prev.addressGuard && prev.addressGuard.state === 'tampered') return 0
+    let seal = checkSeal(currentDir(), prev)
+    // Migration: a v1 seal can only be checked here, with this wallet's old per-wallet key
+    if (isLegacySeal(prev.addressesSeal)) seal = checkLegacySeal(currentDir(), prev)
+    const diffs = addressDiffs(saved, fresh)
     if (seal === 'broken' || (seal !== 'ok' && diffs.length)) {
       const reason = seal === 'broken' ? 'seal' : 'exodus'
       updateCache({ addressGuard: { state: 'tampered', reason, diffs, at: now } })
@@ -1334,12 +1571,23 @@ async function fetchAddresses (wc, { repair = false } = {}) {
       debug(`Address check: Exodus changed ${diffs.length} address(es) of ${currentWalletLabel()}`)
     }
   }
-  try {
-    patch.addressesSeal = makeSeal(currentDir(), fresh)
-  } catch (e) {
-    debug('Address seal failed: ' + e.message)
+  if (k.state === 'ok') {
+    patch.addressesSeal = makeSeal(k, fresh)
+    logStatus('Address seal', 'ok')
+  } else {
+    // No shared key: nothing can be sealed, the list stays "unverified" everywhere. An existing seal is kept
+    // only if the list didn't change (it may still verify in windows that have the key).
+    let same = false
+    try { same = !repair && sealLines(saved).join('\n') === sealLines(fresh).join('\n') } catch (e) {}
+    if (!same) patch.addressesSeal = null
+    logStatus('Address seal', 'skipped – key ' + k.state)
   }
   updateCache(patch)
+  if (repair) debug(`Address check: ${currentWalletLabel()} re-read from Exodus` + (patch.addressesSeal ? ' and re-sealed' : ' – not sealed (key ' + k.state + ')'))
+  if (!patch.addressesSeal) return repair ? 0 : fresh.length
+  // Written? Then the old per-wallet key (v1) has served its purpose
+  const back = readJson(file)
+  if (back && back.addressesSeal && back.addressesSeal.mac === patch.addressesSeal.mac) removeLegacySealKey()
   return fresh.length
 }
 
@@ -1844,23 +2092,60 @@ function rememberUi (wc) {
 // Settings (apply to all wallets)
 // ---------------------------------------------------------------------------------------------
 
+// The two Address Guard switches only count as "off" with a valid signature: guardMac = HMAC over both
+// switches, made with the shared seal key by the gear menu (api.settings) – the only legitimate way to
+// switch them off. A plain edit of settings.json (another program, or a version before this check) can't
+// turn the protection off unnoticed: the switch stays on, and the sidebar says so once (guardIgnored).
+const GUARD_SWITCHES = ['addressCheck', 'clipboardGuard']
+const settingsMac = (key, s) => crypto.createHmac('sha256', key).update(`xw-settings-v1\n${s.addressCheck !== false}|${s.clipboardGuard !== false}`).digest('hex')
+const guardIgnored = new Set() // switches whose unconfirmed "off" was ignored in this session
+
 function readSettings () {
-  return {
+  const stored = readJson(globalFile(SETTINGS_FILE)) || {}
+  const s = {
     hideBalances: false,
     startWallet: 'standard',
     standardName: null,
     backgroundSync: true,
     addressCheck: true, // Address Guard: seal + match with Exodus before copying
     clipboardGuard: true, // Address Guard: watch the clipboard right after copying
-    ...(readJson(globalFile(SETTINGS_FILE)) || {}),
+    ...stored,
   }
+  delete s.guardMac
+  const off = GUARD_SWITCHES.filter((name) => s[name] === false)
+  if (off.length) {
+    const k = sealKeyNow()
+    if (!(k.state === 'ok' && macEqual(settingsMac(k.key, s), stored.guardMac))) {
+      for (const name of off) s[name] = true
+      // While the key is still loading nothing is decided yet – no notice
+      if (k.state !== 'loading') noteIgnoredSwitches(off)
+    }
+  }
+  return s
+}
+function noteIgnoredSwitches (names) {
+  const fresh = names.filter((name) => !guardIgnored.has(name))
+  if (!fresh.length) return
+  for (const name of fresh) guardIgnored.add(name)
+  debug(`Settings: ${fresh.join(' + ')} switched off without a valid confirmation – ignored, the protection stays on`)
 }
 
 function writeSettings (patch) {
+  const stored = readJson(globalFile(SETTINGS_FILE)) || {}
   const next = { ...readSettings(), ...patch }
+  const k = sealKeyNow()
+  if (k.state === 'ok') {
+    next.guardMac = settingsMac(k.key, next)
+  } else if (!GUARD_SWITCHES.some((name) => name in patch)) {
+    // Key not at hand (e.g. still loading): leave the stored switches and their signature exactly as they are
+    for (const name of [...GUARD_SWITCHES, 'guardMac']) {
+      if (name in stored) next[name] = stored[name]
+      else delete next[name]
+    }
+  }
   fs.mkdirSync(profilesRoot(), { recursive: true })
   writeJson(globalFile(SETTINGS_FILE), next)
-  return next
+  return readSettings()
 }
 
 function buildState () {
@@ -1873,6 +2158,7 @@ function buildState () {
     wallets,
     oldFolders: findOldFolders().map(({ path: p, name, modified }) => ({ path: p, name, modified })),
     settings,
+    guardIgnored: [...guardIgnored],
     nextName: nextFreeName(wallets),
     locale: { language: uiLanguage, currency: uiCurrency },
     platform: process.platform,
@@ -1894,6 +2180,7 @@ async function closeOtherWallet (w) {
 
 const api = {
   async state (event) {
+    await sealKeyReady() // the Address Guard flags and the protection switches depend on the shared key
     await snapshotBalance(event.sender)
     return buildState()
   },
@@ -2031,8 +2318,12 @@ const api = {
 
   async copyAddress (event, id, asset, account) {
     const w = findWallet(id)
-    // Address Guard: never copy from a wallet whose saved addresses failed the check (also enforced here)
-    if (readSettings().addressCheck !== false && !addressVerdict(w.dir).ok) throw new Error(t('copyBlocked'))
+    // Address Guard: never copy from a wallet whose saved addresses aren't verified (also enforced here)
+    await sealKeyReady()
+    if (readSettings().addressCheck !== false) {
+      const v = addressVerdict(w.dir)
+      if (!v.ok) throw new Error(t(v.reason === 'unverified' ? 'copyUnverified' : 'copyBlocked'))
+    }
     const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
     const hit = (Array.isArray(cache.addresses) ? cache.addresses : []).find((a) => a.asset === asset && a.account === account)
     if (!hit) throw new Error(t('addressGone'))
@@ -2046,6 +2337,7 @@ const api = {
   // wallet's own window on every address refresh). Fast – no Exodus round trip per copy.
   async verifyAddresses (event, id) {
     const w = findWallet(id)
+    await sealKeyReady()
     if (readSettings().addressCheck === false) return { ok: true, changes: [] }
     const v = addressVerdict(w.dir)
     const withIcon = (list) => (list || []).map((d) => ({ ...d, icon: iconFor(d.asset, w.dir) }))
@@ -2093,11 +2385,12 @@ const api = {
   },
 
   // Is this address one of the user's own (saved in any wallet)? Only wallets whose check passes count –
-  // a tampered list must not whitelist an attacker's address.
+  // a tampered or unconfirmed list must not whitelist an attacker's address.
   async isOwnAddress (event, addr) {
     const key = (x) => { const s = String(x || '').trim(); return /^0x[0-9a-f]+$/i.test(s) ? s.toLowerCase() : s }
     const want = key(addr)
     if (!want) return false
+    await sealKeyReady()
     for (const w of walletDirs()) {
       if (!addressVerdict(w.dir).ok) continue
       const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
@@ -2122,9 +2415,24 @@ const api = {
     return true
   },
 
-  // Plain text to the clipboard (used by the multi-address export – one address per line)
+  // Plain text to the clipboard (used by the multi-address export – one address per line). Address Guard,
+  // also enforced here: every line must be an address of a wallet whose saved addresses are verified.
   async copyText (event, text) {
-    clipboard.writeText(String(text == null ? '' : text))
+    const value = String(text == null ? '' : text)
+    await sealKeyReady()
+    if (readSettings().addressCheck !== false) {
+      const verified = new Set()
+      for (const w of walletDirs()) {
+        if (!addressVerdict(w.dir).ok) continue
+        const cache = readJson(path.join(w.dir, CACHE_FILE)) || {}
+        for (const a of (Array.isArray(cache.addresses) ? cache.addresses : [])) if (a && a.address) verified.add(String(a.address))
+      }
+      for (const line of value.split('\n')) {
+        const s = line.trim()
+        if (s && !verified.has(s)) throw new Error(t('exportBlocked'))
+      }
+    }
+    clipboard.writeText(value)
     return true
   },
 
@@ -2208,6 +2516,9 @@ const api = {
     if (patch && typeof patch.backgroundSync === 'boolean') next.backgroundSync = patch.backgroundSync
     if (patch && typeof patch.addressCheck === 'boolean') next.addressCheck = patch.addressCheck
     if (patch && typeof patch.clipboardGuard === 'boolean') next.clipboardGuard = patch.clipboardGuard
+    // The gear menu is the only way to switch a protection off: signed with the shared key (see readSettings)
+    const k = await sealKeyReady()
+    if ((next.addressCheck === false || next.clipboardGuard === false) && k.state !== 'ok') throw new Error(t('guardKeyMissing'))
     const res = writeSettings(next)
     if (next.backgroundSync === true) setTimeout(ensureBackground, 500)
     return res
@@ -2379,6 +2690,7 @@ try {
       try { watchUi(wc) } catch (e) { debug('Error: ' + e.message) }
     })
     app.whenReady().then(() => {
+      sealKeyReady() // Address Guard: load (or create) the shared seal key once, in the background
       setInterval(() => { try { refreshWindowTitles() } catch (e) { debug('Window-title error: ' + e.message) } }, 1500)
       setInterval(() => { checkCommands().catch((e) => debug('Command error: ' + e.message)) }, 1000)
       setInterval(() => { deliverReceived().catch((e) => debug('Incoming-payment error: ' + e.message)) }, 1000)

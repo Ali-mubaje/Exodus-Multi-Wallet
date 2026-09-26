@@ -13,3 +13,6 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# Release output of tools/release.js (published as GitHub release assets, never committed)
+dist/

@@ -64,6 +64,7 @@
     alert: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><path d="M12 16.2h.01"/>'),
     info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/>'),
     layers: svg('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
+    shieldOff: svg('<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/><path d="m4 4 16 16"/>'),
     gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
   }
 
@@ -826,6 +827,25 @@
 @keyframes xw-gd-glint{0%{opacity:0;transform:translateX(-100%)}15%{opacity:1}85%{opacity:1}100%{opacity:0;transform:translateX(100%)}}
 @keyframes xw-gd-life{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 
+/* ---------- Not confirmed yet ("unverified", addition to the handoff): calm amber, copying paused – never red ---------- */
+#xw-root .xw-gd-s--wait{color:var(--xw-amber)}
+#xw-root .xw-gd-s--wait svg{opacity:.85}
+#xw-root [data-gd="unverified"] .xw-gd-s--wait{opacity:1;transform:none;transition:opacity 220ms var(--xw-ease-out) 60ms,transform 260ms var(--xw-ease-out) 60ms}
+#xw-root .xw-gd-banner.is-wait{--xw-gd-tint:rgba(255,196,107,.05);--xw-gd-edge:rgba(255,196,107,.24)}
+#xw-root .xw-gd-banner.is-wait:before{background:var(--xw-amber)}
+#xw-root .xw-gd-banner.is-wait .xw-gd-b-ico{color:var(--xw-amber)}
+#xw-root [data-gd="unverified"] .xw-addr{cursor:not-allowed}
+#xw-root [data-gd="unverified"] .xw-addr:hover{background:transparent}
+#xw-root [data-gd="unverified"] .xw-addr :is(.xw-addr-icon,.xw-addr-img,.xw-addr-body){opacity:.5}
+#xw-root [data-gd="unverified"] .xw-addr .xw-addr-copy{opacity:0!important}
+#xw-root .xw-cp.is-gd-locked.is-gd-wait{background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,linear-gradient(-90deg,rgba(255,196,107,.4),rgba(255,196,107,.24)) border-box}
+#xw-root .xw-cp.is-gd-locked.is-gd-wait:hover{background:linear-gradient(var(--xw-bg),var(--xw-bg)) padding-box,linear-gradient(-90deg,rgba(255,196,107,.52),rgba(255,196,107,.32)) border-box}
+#xw-root .xw-cp.is-gd-locked.is-gd-wait svg{color:var(--xw-amber)}
+#xw-root .xw-chip.is-gd-locked.is-gd-wait{background:rgba(255,196,107,.06)}
+#xw-root .xw-chip.is-gd-locked.is-gd-wait svg{color:var(--xw-amber)}
+#xw-root .xw-gd-note.is-wait{color:var(--xw-amber)}
+#xw-root .xw-badge.is-gd-wait{background:rgba(255,196,107,.12);color:var(--xw-amber);animation:xw-gd-fade 200ms var(--xw-ease-out) both}
+
 /* ---------- Reduced motion: cross-fades only; colors stay ---------- */
 #xw-root.xw-reduce :is(.xw-gd-s,.xw-gd-tip,.xw-gd-rowico,.xw-gd-rowmsg,.xw-gd-cp-c,.xw-gd-layer,.xw-gd-flag,.xw-gd-alert){transform:none!important}
 #xw-root.xw-reduce .xw-cp:is(.is-gd-locked,.is-gd-alarm) :is(.xw-cp-a,.xw-cp-b),
@@ -860,6 +880,13 @@
 #xw-root.xw-reduce .xw-settings{transform:none!important}
 /* Address check switched off in the settings: no seal, no banner */
 #xw-root .xw-sheet.is-gd-off :is(.xw-gd-seal,.xw-gd-banner){display:none!important}
+/* A protection is switched off (gear menu): persistent amber hint under the header, also above the address view */
+#xw-root .xw-gd-offbar{flex:none;display:flex;padding:8px 24px 0}
+#xw-root .xw-gd-offpill{display:inline-flex;align-items:center;gap:6px;max-width:100%;height:22px;padding:0 10px 0 8px;border-radius:11px;font-size:11.5px;font-weight:500;color:var(--xw-amber);background:rgba(255,196,107,.1);cursor:pointer;transition:background .15s,color .15s}
+#xw-root .xw-gd-offpill:hover{background:rgba(255,196,107,.17);color:#ffd494}
+#xw-root .xw-gd-offpill:focus-visible{outline:1px solid var(--xw-cyan);outline-offset:2px}
+#xw-root .xw-gd-offpill>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#xw-root .has-gd-off>.xw-sheet{top:110px}
 /* Cards wait while the Exodus window is not in front: the remaining-time line stands still */
 #xw-root .xw-nt-stack.is-held .xw-nt-card:after{animation-play-state:paused}
 /* "Ready" card: the hint may span two lines */
@@ -1044,6 +1071,14 @@
       setClip: 'Watch the clipboard after copying',
       setClipHint: 'Warns if another program swaps an address you just copied.',
       exportSrc: (n) => `${n} address${n === 1 ? '' : 'es'}`,
+      guardOffCheck: 'Address check off',
+      guardOffClip: 'Clipboard guard off',
+      guardOffTitle: 'Switched off in the settings – click to change',
+      guardIgnored: (names) => {
+        const both = names.includes('addressCheck') && names.includes('clipboardGuard')
+        const what = both ? 'The address check and the clipboard guard' : names.includes('addressCheck') ? 'The address check' : 'The clipboard guard'
+        return `${what} had been switched off without confirmation (outside the wallet, or by an older version). That was ignored – ${both ? 'both are' : 'it’s'} on. You can switch ${both ? 'them' : 'it'} off only here, in the gear menu at the top.`
+      },
     },
     de: {
       q: (s) => `„${s}“`,
@@ -1199,6 +1234,15 @@
       setClip: 'Zwischenablage nach dem Kopieren überwachen',
       setClipHint: 'Warnt, wenn ein anderes Programm eine eben kopierte Adresse austauscht.',
       exportSrc: (n) => `${n} Adresse${n === 1 ? '' : 'n'}`,
+      guardOffCheck: 'Adressprüfung aus',
+      guardOffClip: 'Clipboard-Schutz aus',
+      guardOffTitle: 'In den Einstellungen ausgeschaltet – zum Ändern klicken',
+      guardIgnored: (names) => {
+        const check = names.includes('addressCheck')
+        const both = check && names.includes('clipboardGuard')
+        const what = both ? 'Adressprüfung und Clipboard-Schutz waren' : check ? 'Die Adressprüfung war' : 'Der Clipboard-Schutz war'
+        return `${what} ohne Bestätigung ausgeschaltet (außerhalb der Wallet oder von einer älteren Version). Das wurde ignoriert – ${both ? 'beide sind' : check ? 'sie ist' : 'er ist'} an. Ausschalten geht nur hier im Zahnrad-Menü oben.`
+      },
     },
   }
 
@@ -1506,6 +1550,19 @@
         chTitle: (n) => `Exodus updated ${n} address${n === 1 ? '' : 'es'}`,
         chText: (coin) => `${coin} now uses a new address format. The new address is checked and ready to copy.`,
         chShow: 'Show change', chBefore: 'Before', chNow: 'Now', chBadge: 'New', chDetails: (w) => `Change · ${w}`,
+        // Not confirmed yet ("unverified") – calm, but copying is paused
+        sealWait: 'Not confirmed yet',
+        tipWait: 'These addresses haven’t been compared with Exodus yet. Copying is paused until they are.',
+        bTitleWait: 'Addresses not confirmed yet',
+        bMsgWait: 'These saved addresses haven’t been compared with Exodus yet (e.g. after an update). Copying and export stay paused until then – re-read them now, or just open the wallet.',
+        rowWait: 'Copying paused – not confirmed yet',
+        blockedWait: 'Copying is paused until these addresses are confirmed. Re-read them from Exodus first.',
+        exportWait: 'Export paused · not confirmed',
+        crossWaiting: (w) => `${w} is left out – its addresses aren’t confirmed yet.`,
+        doneTitleWait: 'Addresses confirmed',
+        doneMsgWait: (n) => `All ${n} addresses were read from Exodus and sealed. Copying is unlocked.`,
+        badgeWait: 'Not confirmed',
+        badgeWaitTip: 'Its saved addresses haven’t been compared with Exodus yet – copying is paused until then. Opening the wallet does that.',
       },
       de: {
         justNow: 'gerade eben', minAgo: (n) => `vor ${n} Min.`, hrsAgo: (n) => `vor ${n} Std.`,
@@ -1561,6 +1618,18 @@
         chTitle: (n) => `Exodus hat ${n} ${n === 1 ? 'Adresse' : 'Adressen'} aktualisiert`,
         chText: (coin) => `${coin} nutzt jetzt ein neues Adressformat. Die neue Adresse ist geprüft und kann kopiert werden.`,
         chShow: 'Änderung anzeigen', chBefore: 'Vorher', chNow: 'Jetzt', chBadge: 'Neu', chDetails: (w) => `Änderung · ${w}`,
+        sealWait: 'Noch nicht bestätigt',
+        tipWait: 'Diese Adressen wurden noch nicht mit Exodus abgeglichen. Kopieren ist bis dahin pausiert.',
+        bTitleWait: 'Adressen noch nicht bestätigt',
+        bMsgWait: 'Diese gespeicherten Adressen wurden noch nicht mit Exodus abgeglichen (z. B. nach einem Update). Kopieren und Export bleiben bis dahin pausiert – jetzt neu einlesen oder die Wallet einfach öffnen.',
+        rowWait: 'Kopieren pausiert – noch nicht bestätigt',
+        blockedWait: 'Kopieren ist pausiert, bis diese Adressen bestätigt sind. Lies sie zuerst neu aus Exodus ein.',
+        exportWait: 'Export pausiert · nicht bestätigt',
+        crossWaiting: (w) => `${w} wird ausgelassen – ihre Adressen sind noch nicht bestätigt.`,
+        doneTitleWait: 'Adressen bestätigt',
+        doneMsgWait: (n) => `Alle ${n} Adressen wurden aus Exodus eingelesen und versiegelt. Kopieren ist freigegeben.`,
+        badgeWait: 'Nicht bestätigt',
+        badgeWaitTip: 'Ihre gespeicherten Adressen wurden noch nicht mit Exodus abgeglichen – Kopieren ist bis dahin pausiert. Öffnen der Wallet erledigt das.',
       },
     }
 
@@ -1658,6 +1727,7 @@
         `<span class="xw-gd-s xw-gd-s--busy" aria-hidden="true"><i class="xw-gd-spin"></i><span></span></span>` +
         `<span class="xw-gd-s xw-gd-s--fail">${ICON.shieldAlert(13)}<span></span></span>` +
         `<span class="xw-gd-s xw-gd-s--done">${ICON.shieldOk(13)}<span></span></span>` +
+        `<span class="xw-gd-s xw-gd-s--wait">${ICON.shieldAlert(13)}<span></span></span>` +
         `<span class="xw-gd-tip" role="tooltip" id="${tipId}"></span>`)
       sub.appendChild(c.seal)
       c.banner = h('div', { class: 'xw-gd-banner', tabindex: '-1', hidden: '' })
@@ -1684,15 +1754,18 @@
 
     G.setLang = function (l) {
       lang = TEXT[l] ? l : 'en'
-      for (const c of CTX.values()) { renderSeal(c); renderRows(c); if (!c.banner.hidden) renderBanner(c, true); if (c.layerKind) G[c.layerKind](c.sheet); if (c.opts.exportBtn) G.lockExport(c.opts.exportBtn, c.state === 'tampered') }
+      for (const c of CTX.values()) { renderSeal(c); renderRows(c); if (!c.banner.hidden) renderBanner(c, true); if (c.layerKind) G[c.layerKind](c.sheet); if (c.opts.exportBtn) G.lockExport(c.opts.exportBtn, c.state === 'tampered' || c.state === 'unverified', c.state === 'unverified') }
       document.querySelectorAll('.xw-badge.is-gd-fail').forEach((b) => { b.textContent = T('badge') })
-      document.querySelectorAll('[data-gd-note]').forEach((n) => { n.textContent = T('crossExcluded', n.dataset.gdNote) })
+      document.querySelectorAll('.xw-badge.is-gd-wait').forEach((b) => { b.textContent = T('badgeWait'); b.title = T('badgeWaitTip') })
+      document.querySelectorAll('[data-gd-note]').forEach((n) => { n.textContent = T(n.dataset.gdKind === 'wait' ? 'crossWaiting' : 'crossExcluded', n.dataset.gdNote) })
       document.querySelectorAll('.xw-gd-flag').forEach((f) => syncToggleAria(f.parentElement))
       if (alert.el && !alert.el.hidden) renderAlert(true)
     }
     G.lang = () => lang
     G.T = T
-    G.canCopy = (sheet) => { const c = ctxOf(sheet); return !c || c.state !== 'tampered' }
+    // Locked: tampered (red) or not confirmed yet ("unverified", calm) – both block copying and export
+    const isLocked = (state) => state === 'tampered' || state === 'unverified'
+    G.canCopy = (sheet) => { const c = ctxOf(sheet); return !c || !isLocked(c.state) }
 
     function renderSeal (c) {
       const q = (s) => c.seal.querySelector(s + '>span')
@@ -1700,8 +1773,9 @@
       q('.xw-gd-s--busy').textContent = T('sealBusy')
       q('.xw-gd-s--fail').textContent = T('sealFail')
       q('.xw-gd-s--done').textContent = T('sealDone')
-      c.seal.querySelector('.xw-gd-tip').textContent = T(c.state === 'tampered' ? 'tipFail' : c.state === 'checking' ? 'tipBusy' : 'tipOk')
-      c.seal.setAttribute('aria-label', { verified: T('sealOk', ago(c.at)), changed: T('sealOk', ago(c.at)), checking: T('sealBusy'), tampered: T('sealFail'), restored: T('sealDone') }[c.state])
+      q('.xw-gd-s--wait').textContent = T('sealWait')
+      c.seal.querySelector('.xw-gd-tip').textContent = T(c.state === 'tampered' ? 'tipFail' : c.state === 'unverified' ? 'tipWait' : c.state === 'checking' ? 'tipBusy' : 'tipOk')
+      c.seal.setAttribute('aria-label', { verified: T('sealOk', ago(c.at)), changed: T('sealOk', ago(c.at)), checking: T('sealBusy'), tampered: T('sealFail'), restored: T('sealDone'), unverified: T('sealWait') }[c.state])
     }
     setInterval(() => { for (const c of CTX.values()) if (c.state === 'verified' || c.state === 'changed') renderSeal(c) }, 30000)
 
@@ -1710,9 +1784,9 @@
       const changed = new Set(c.changes.map((d) => d.now))
       c.sheet.querySelectorAll('.xw-addr').forEach((row) => {
         const addr = row.dataset.address || row.getAttribute('title') || ''
-        const locked = c.state === 'tampered'
-        row.classList.toggle('is-gd-bad', locked && bad.has(addr))
-        if (locked) { row.setAttribute('aria-disabled', 'true'); row.dataset.gdTitle ??= row.getAttribute('title') || ''; row.setAttribute('title', T('rowLocked')) } else if (row.hasAttribute('aria-disabled')) { row.removeAttribute('aria-disabled'); row.setAttribute('title', row.dataset.gdTitle || addr); delete row.dataset.gdTitle }
+        const locked = isLocked(c.state)
+        row.classList.toggle('is-gd-bad', c.state === 'tampered' && bad.has(addr))
+        if (locked) { row.setAttribute('aria-disabled', 'true'); row.dataset.gdTitle ??= row.getAttribute('title') || ''; row.setAttribute('title', T(c.state === 'unverified' ? 'rowWait' : 'rowLocked')) } else if (row.hasAttribute('aria-disabled')) { row.removeAttribute('aria-disabled'); row.setAttribute('title', row.dataset.gdTitle || addr); delete row.dataset.gdTitle }
         const msg = row.querySelector('.xw-gd-rowmsg')
         if (msg && !row.classList.contains('is-gd-alarm')) msg.textContent = T('rowBad')
         // E: small neutral "New" badge next to the ticker
@@ -1724,7 +1798,7 @@
     }
 
     // ---------- States ----------
-    // state: 'verified' | 'checking' | 'tampered' | 'restored' | 'changed'
+    // state: 'verified' | 'checking' | 'tampered' | 'restored' | 'changed' | 'unverified' (not confirmed yet)
     // info:  { at, reason:'exodus'|'seal', diffs:[{coin,ticker,portfolio,saved,exodus}], changes:[{coin,ticker,portfolio,before,now}] }
     G.setState = function (sheet, state, info = {}) {
       const c = ctxOf(sheet) || G.mount(sheet)
@@ -1733,11 +1807,12 @@
       if (info.reason) c.reason = info.reason
       if (info.diffs) c.diffs = info.diffs
       if (info.changes) c.changes = info.changes
-      if (state === 'verified' || state === 'restored') { c.diffs = []; if (state === 'verified' && prev !== 'checking') c.changes = [] }
+      if (state === 'verified' || state === 'restored' || state === 'unverified') { c.diffs = []; if (state !== 'restored' && prev !== 'checking') c.changes = [] }
       sheet.dataset.gd = state
       renderSeal(c); renderRows(c)
-      if (c.opts.exportBtn) G.lockExport(c.opts.exportBtn, state === 'tampered')
+      if (c.opts.exportBtn) G.lockExport(c.opts.exportBtn, isLocked(state), state === 'unverified')
       if (state === 'tampered') { renderBanner(c, prev === 'tampered'); if (prev !== 'tampered' && c.sheet.closest('.is-sheet')) c.banner.focus({ preventScroll: true }) } else if (state === 'changed') renderBanner(c, prev === 'changed')
+      else if (state === 'unverified') renderBanner(c, prev === 'unverified')
       else if (state !== 'restored' && state !== 'checking' && !c.banner.hidden && c.bannerKind !== 'done') hideBanner(c)
       clearTimeout(c.rt)
       if (state === 'restored') c.rt = later(() => { if (c.state === 'restored') G.setState(sheet, 'verified', { at: Date.now() }) }, 2400)
@@ -1751,16 +1826,18 @@
       G.setState(sheet, 'checking')
       let res; try { res = await verifyFn() } catch (e) { res = { ok: false, reason: 'exodus', diffs: c.diffs } }
       if (res && res.ok) G.setState(sheet, res.changes && res.changes.length ? 'changed' : before === 'changed' ? 'changed' : 'verified', { at: Date.now(), changes: res.changes })
-      else G.setState(sheet, 'tampered', { reason: res.reason || 'exodus', diffs: res.diffs || [] })
+      else if (res && res.reason === 'unverified') G.setState(sheet, 'unverified')
+      else G.setState(sheet, 'tampered', { reason: (res && res.reason) || 'exodus', diffs: (res && res.diffs) || [] })
       return !!(res && res.ok)
     }
 
     // ---------- Banner ----------
     function renderBanner (c, quiet) {
-      const b = c.banner; const kind = c.state === 'changed' ? 'info' : 'danger'
+      const b = c.banner; const kind = c.state === 'changed' ? 'info' : c.state === 'unverified' ? 'wait' : 'danger'
+      clearTimeout(c.bt) // a hide still pending (sheet re-opened right away) must not swallow this banner
       c.bannerKind = kind
-      b.classList.remove('is-done', 'is-busy', 'is-out'); b.classList.toggle('is-info', kind === 'info')
-      b.setAttribute('role', kind === 'info' ? 'status' : 'alert')
+      b.classList.remove('is-done', 'is-busy', 'is-out'); b.classList.toggle('is-info', kind === 'info'); b.classList.toggle('is-wait', kind === 'wait')
+      b.setAttribute('role', kind === 'danger' ? 'alert' : 'status')
       b.removeAttribute('aria-live')
       const tid = 'xw-gd-bt-' + (++uid)
       b.setAttribute('aria-labelledby', tid)
@@ -1772,6 +1849,11 @@
           `<div class="xw-gd-b-actions"><button type="button" class="xw-gd-btn" data-a="reread">${ICON.reread(14)}<span>${esc(T('reread'))}</span></button>` +
           `<button type="button" class="xw-gd-link" data-a="details">${esc(T('details'))}</button>` +
           `<button type="button" class="xw-gd-link" data-a="explain">${esc(T('explain'))}</button></div></div></div><i class="xw-gd-prog" aria-hidden="true"></i>`
+      } else if (kind === 'wait') {
+        b.innerHTML = `<div class="xw-gd-b-body"><span class="xw-gd-b-ico">${ICON.shieldAlert(18)}</span><div class="xw-gd-b-text">` +
+          `<div class="xw-gd-b-title" id="${tid}">${esc(T('bTitleWait'))}</div><div class="xw-gd-b-msg">${esc(T('bMsgWait'))}</div>` +
+          `<div class="xw-gd-b-actions"><button type="button" class="xw-gd-btn is-neutral" data-a="reread">${ICON.reread(14)}<span>${esc(T('reread'))}</span></button></div></div></div>` +
+          '<i class="xw-gd-prog" aria-hidden="true"></i>'
       } else {
         const n = c.changes.length || 1; const coin = (c.changes[0] || {}).coin || ''
         b.innerHTML = `<div class="xw-gd-b-body"><span class="xw-gd-b-ico">${ICON.info(18)}</span><div class="xw-gd-b-text">` +
@@ -1799,7 +1881,8 @@
     G.reread = async function (sheet) {
       const c = ctxOf(sheet); if (!c || c.busy) return
       c.busy = true; G.closeLayer(sheet)
-      const b = c.banner; if (b.hidden || c.bannerKind !== 'danger') renderBanner(c)
+      const wait = c.state === 'unverified' // "confirm" rather than "restore" – nothing was found wrong
+      const b = c.banner; if (b.hidden || (c.bannerKind !== 'danger' && c.bannerKind !== 'wait')) renderBanner(c)
       const btn = b.querySelector('[data-a="reread"]'); const lbl = btn && btn.querySelector('span')
       b.classList.add('is-busy'); b.style.setProperty('--xw-gd-p', 0)
       if (btn) { btn.setAttribute('aria-busy', 'true'); btn.innerHTML = `<i class="xw-gd-spin" aria-hidden="true"></i><span>${esc(T('rereadBusy', 0, '…'))}</span>` }
@@ -1808,12 +1891,12 @@
       c.busy = false
       if (res && res.ok) {
         await new Promise((r) => later(r, 220))
-        b.classList.remove('is-busy'); b.classList.add('is-done'); c.bannerKind = 'done'
+        b.classList.remove('is-busy', 'is-wait', 'is-info'); b.classList.add('is-done'); c.bannerKind = 'done'
         b.setAttribute('role', 'status')
         b.innerHTML = `<div class="xw-gd-b-body is-swap"><span class="xw-gd-b-ico">${ICON.check(18)}</span><div class="xw-gd-b-text">` +
-          `<div class="xw-gd-b-title">${esc(T('doneTitle'))}</div><div class="xw-gd-b-msg">${esc(T('doneMsg', res.count || 0))}</div></div></div>`
+          `<div class="xw-gd-b-title">${esc(T(wait ? 'doneTitleWait' : 'doneTitle'))}</div><div class="xw-gd-b-msg">${esc(T(wait ? 'doneMsgWait' : 'doneMsg', res.count || 0))}</div></div></div>`
         G.setState(sheet, 'restored', { at: Date.now() })
-        if (c.opts.toast) c.opts.toast(T('doneTitle'), 'ok')
+        if (c.opts.toast) c.opts.toast(T(wait ? 'doneTitleWait' : 'doneTitle'), 'ok')
         later(() => { if (c.bannerKind === 'done') hideBanner(c) }, 2400)
       } else {
         b.classList.remove('is-busy'); renderBanner(c, true)
@@ -1825,7 +1908,8 @@
     // Click on a locked row: nudge + toast + focus the banner
     G.blockedCopy = function (sheet, row) {
       const c = ctxOf(sheet); if (row) restart(row, 'is-gd-nope')
-      if (c && c.opts.toast) c.opts.toast(T('blocked'), 'error')
+      const wait = !!c && c.state === 'unverified'
+      if (c && c.opts.toast) c.opts.toast(T(wait ? 'blockedWait' : 'blocked'), wait ? '' : 'error')
       if (c && !c.banner.hidden) { restart(c.banner, 'is-in'); const btn = c.banner.querySelector('[data-a="reread"]'); if (btn) btn.focus({ preventScroll: true }) }
     }
 
@@ -1878,28 +1962,39 @@
       const stack = btn.querySelector('.xw-cp-stack')
       if (stack && !stack.querySelector('.xw-gd-cp-c')) stack.appendChild(h('span', { class: 'xw-gd-cp-c', 'aria-hidden': 'true' }, ICON.lock(16) + '<span></span>'))
     }
-    G.lockExport = function (btn, on) {
+    // wait: locked because the addresses aren't confirmed yet (calm amber instead of red)
+    G.lockExport = function (btn, on, wait) {
       G.mountExport(btn)
       const c = btn.querySelector('.xw-gd-cp-c'); if (!c) return
-      if (on) { btn.classList.remove('is-copied', 'is-gd-alarm'); c.innerHTML = ICON.lock(16) + `<span>${esc(T('exportLocked'))}</span>`; btn.classList.add('is-gd-locked'); btn.setAttribute('aria-disabled', 'true'); btn.setAttribute('aria-label', T('exportLocked')) } else if (btn.classList.contains('is-gd-locked')) { btn.classList.remove('is-gd-locked'); btn.removeAttribute('aria-disabled'); btn.removeAttribute('aria-label') }
+      const label = T(wait ? 'exportWait' : 'exportLocked')
+      if (on) { btn.classList.remove('is-copied', 'is-gd-alarm'); c.innerHTML = ICON.lock(16) + `<span>${esc(label)}</span>`; btn.classList.add('is-gd-locked'); btn.classList.toggle('is-gd-wait', !!wait); btn.setAttribute('aria-disabled', 'true'); btn.setAttribute('aria-label', label) } else if (btn.classList.contains('is-gd-locked')) { btn.classList.remove('is-gd-locked', 'is-gd-wait'); btn.removeAttribute('aria-disabled'); btn.removeAttribute('aria-label') }
     }
-    // Cross-wallet export: chip of a failed wallet is excluded; note explains why
-    G.lockChip = function (chip, on) {
+    // Cross-wallet export: chip of a failed (or not yet confirmed: wait) wallet is excluded; note explains why
+    G.lockChip = function (chip, on, wait) {
       chip.classList.toggle('is-gd-locked', on)
+      chip.classList.toggle('is-gd-wait', !!(on && wait))
       chip.setAttribute('aria-disabled', on ? 'true' : 'false')
       if (on) { chip.classList.remove('is-active'); chip.setAttribute('aria-pressed', 'false'); if (!chip.querySelector('svg')) chip.insertAdjacentHTML('afterbegin', ICON.lock(12)) } else { const s = chip.querySelector('svg'); if (s) s.remove() }
     }
-    G.crossNote = function (container, walletName) {
-      let n = container.querySelector('[data-gd-note]')
-      if (!walletName) { if (n) n.remove(); return }
-      if (!n) { n = h('div', { class: 'xw-gd-note', role: 'note' }); container.appendChild(n) }
-      n.dataset.gdNote = walletName; n.textContent = T('crossExcluded', walletName)
+    // One note per kind (failed / wait). walletName null removes that note – or both when wait is left out.
+    G.crossNote = function (container, walletName, wait) {
+      const kind = wait ? 'wait' : 'fail'
+      if (!walletName) { container.querySelectorAll(wait === undefined ? '[data-gd-note]' : `[data-gd-kind="${kind}"]`).forEach((n) => n.remove()); return }
+      let n = container.querySelector(`[data-gd-kind="${kind}"]`)
+      if (!n) { n = h('div', { class: 'xw-gd-note' + (wait ? ' is-wait' : ''), role: 'note', 'data-gd-kind': kind }); container.appendChild(n) }
+      n.dataset.gdNote = walletName; n.textContent = T(wait ? 'crossWaiting' : 'crossExcluded', walletName)
     }
     G.walletFlag = function (item, on) {
       const name = item.querySelector('.xw-name'); let b = name && name.querySelector('.xw-badge.is-gd-fail')
       if (on && name && !b) { b = h('span', { class: 'xw-badge is-gd-fail' }); b.textContent = T('badge'); name.appendChild(b) }
       if (!on && b) b.remove()
       item.classList.toggle('is-gd-fail', !!on)
+    }
+    // Calm counterpart: "Not confirmed" badge on the wallet row – no red flag on the wallet button
+    G.walletWait = function (item, on) {
+      const name = item.querySelector('.xw-name'); let b = name && name.querySelector('.xw-badge.is-gd-wait')
+      if (on && name && !b) { b = h('span', { class: 'xw-badge is-gd-wait' }); name.appendChild(b) }
+      if (b && on) { b.textContent = T('badgeWait'); b.title = T('badgeWaitTip') } else if (b) b.remove()
     }
     function syncToggleAria (toggle) {
       const r = toggle._gd || new Set()
@@ -2101,6 +2196,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       root.setAttribute('lang', language)
       XW.guard.setLang(language.toLowerCase().split('-')[0])
       if (settingsOpen) renderSettings()
+      syncGuardOff()
     }
 
     const count = el('span', { class: 'xw-count xw-hide' })
@@ -2202,6 +2298,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
     ]
     const settingsBox = el('div', { class: 'xw-settings', role: 'dialog', 'aria-hidden': 'true' })
     let settingsOpen = false
+    // A protection switched off in the settings stays visible outside the gear menu: amber pill under the header
+    const guardOffText = el('span')
+    const guardOffPill = label(el('button', { type: 'button', class: 'xw-gd-offpill', html: ICON.shieldOff(14), onclick: (e) => { e.stopPropagation(); toggleSettings() } }, guardOffText), 'guardOffTitle', 'title')
+    const guardOffBar = el('div', { class: 'xw-gd-offbar xw-stag xw-hide', style: '--xw-i:0' }, guardOffPill)
     const view = el('div', { class: 'xw-view' },
       sumBox,
       label(el('div', { class: 'xw-intro' }), 'intro'),
@@ -2218,6 +2318,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         eyeBtn,
         label(el('button', { type: 'button', class: 'xw-icon xw-gear', html: ICON.gear(18), 'aria-haspopup': 'dialog', onclick: (e) => { e.stopPropagation(); toggleSettings() } }), 'settingsTitle', 'title'),
         label(el('button', { type: 'button', class: 'xw-icon', html: ICON.close(18), onclick: () => closePanel() }), 'close', 'title')),
+      guardOffBar,
       view,
       sheet,
       settingsBox,
@@ -2369,11 +2470,11 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
 
     // Notices as a toast. Short confirmations stay for 2.4 s (handoff default); longer texts and errors
     // stay longer so they can be read. The remaining-time line runs for exactly this duration.
-    function showNotice (text, kind) {
+    function showNotice (text, kind, holdMs) {
       const len = String(text).length
-      const hold = kind === 'error'
+      const hold = holdMs || (kind === 'error'
         ? Math.min(10000, Math.max(4000, 1500 + len * 50))
-        : Math.min(8000, Math.max(2400, 1100 + len * 38))
+        : Math.min(8000, Math.max(2400, 1100 + len * 38)))
       toastIco.innerHTML = kind === 'error' ? ICON.alert(16) : kind === 'ok' ? ICON.check(16) : ICON.info(16)
       XW.toast(toastEl, text, kind || '', hold)
     }
@@ -2397,6 +2498,8 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       renderSum(hide)
       if (settingsOpen) renderSettings()
       sheet.classList.toggle('is-gd-off', !guardOn())
+      syncGuardOff()
+      guardNotice()
       // While a wallet is still loading or being set up, check more often (4 s instead of 15 s)
       const busy = state.wallets.some((w) => w.setup || (w.running && w.status && w.status.state !== 'ready'))
       if (open) setRefreshEvery(busy ? 4000 : 15000)
@@ -2800,14 +2903,34 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       const on = state.settings[key] === false
       state.settings[key] = on
       renderSettings()
+      syncGuardOff()
       const focus = settingsBox.querySelectorAll('.xw-set')[SETTINGS.findIndex(([k]) => k === key)]
       if (focus) focus.focus({ preventScroll: true })
       try {
         await call('settings', { [key]: on })
-        refresh()
       } catch (e) {
         fail(e)
       }
+      refresh() // also puts the switch back if main.js refused
+    }
+
+    // Address check / clipboard guard switched off (legitimately, in the gear menu): persistent pill
+    function syncGuardOff () {
+      const s = (state && state.settings) || {}
+      const parts = []
+      if (s.addressCheck === false) parts.push(T.guardOffCheck)
+      if (s.clipboardGuard === false) parts.push(T.guardOffClip)
+      guardOffText.textContent = parts.join(' · ')
+      guardOffBar.classList.toggle('xw-hide', !parts.length)
+      panel.classList.toggle('has-gd-off', parts.length > 0)
+    }
+    // An unconfirmed "off" in settings.json was ignored by main.js: say so once per session (calm, no alarm)
+    let guardNoticeShown = false
+    function guardNotice () {
+      const names = state && Array.isArray(state.guardIgnored) ? state.guardIgnored : []
+      if (guardNoticeShown || !open || !names.length) return
+      guardNoticeShown = true
+      showNotice(T.guardIgnored(names), '', 12000)
     }
 
     async function closeWallet (w) {
@@ -2920,25 +3043,40 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       }
       return r
     })
-    // Cross-wallet export: wallets whose addresses failed the check are left out
+    // Cross-wallet export: wallets whose addresses aren't verified are left out – crossWaiting marks those that
+    // are only not confirmed yet (calm note) instead of failed (red note)
     const crossFailed = new Set()
+    const crossWaiting = new Set()
     async function verifyCrossWallets (ids) {
-      if (!guardOn()) { crossFailed.clear(); return }
+      if (!guardOn()) { crossFailed.clear(); crossWaiting.clear(); return }
       const results = await Promise.all(ids.map((id) => call('verifyAddresses', id).then((r) => [id, r], () => [id, { ok: false }])))
       for (const [id, r] of results) {
         if (r && r.ok) crossFailed.delete(id)
         else crossFailed.add(id)
+        if (r && !r.ok && r.reason === 'unverified') crossWaiting.add(id)
+        else crossWaiting.delete(id)
       }
     }
-    // Red badge on the wallet row + red "!" on the wallet button: from main.js (every refresh) and from
-    // the address view that is open right now
+    // Red badge on the wallet row + red "!" on the wallet button (failed), or a calm "Not confirmed" badge
+    // (unverified): from main.js (every refresh) and from the address view that is open right now
     function syncGuardFlags () {
       const failed = new Set()
+      const waiting = new Set()
       if (guardOn()) {
-        if (state) for (const w of state.wallets) if (w.addressCheck === 'failed') failed.add(w.id)
+        if (state) {
+          for (const w of state.wallets) {
+            if (w.addressCheck === 'failed') failed.add(w.id)
+            else if (w.addressCheck === 'unverified') waiting.add(w.id)
+          }
+        }
         if (sheetWallet && !sheetCross && sheet.dataset.gd === 'tampered') failed.add(sheetWallet.id)
+        if (sheetWallet && !sheetCross && sheet.dataset.gd === 'unverified') waiting.add(sheetWallet.id)
       }
-      for (const item of list.children) if (item.dataset && item.dataset.id) XW.guard.walletFlag(item, failed.has(item.dataset.id))
+      for (const item of list.children) {
+        if (!item.dataset || !item.dataset.id) continue
+        XW.guard.walletFlag(item, failed.has(item.dataset.id))
+        XW.guard.walletWait(item, waiting.has(item.dataset.id) && !failed.has(item.dataset.id))
+      }
       XW.guard.toggleFlag(toggle, 'tampered', failed.size > 0)
     }
     // After a successful copy: watch the clipboard ~2 s for a swapped address (state D)
@@ -3044,6 +3182,7 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
       sheetSaved.textContent = ''
       resetGuard(T.exportAllWallets)
       crossFailed.clear()
+      crossWaiting.clear()
       addrFilter.value = ''
       addrList.replaceChildren(el('div', { class: 'xw-empty', text: T.loading }))
       panel.classList.add('is-sheet')
@@ -3211,9 +3350,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
         renderChips(groups, null)
         // Address Guard: wallets that failed the check are locked out of the cross-wallet export
         if (sheetCross) {
-          for (const chip of addrChips.children) if (chip.xwKey) XW.guard.lockChip(chip, crossFailed.has(chip.xwKey))
-          const names = sheetWallets().filter(([id]) => crossFailed.has(id)).map(([, name]) => name)
-          XW.guard.crossNote(crossNotes, names.length ? names.join(', ') : null)
+          for (const chip of addrChips.children) if (chip.xwKey) XW.guard.lockChip(chip, crossFailed.has(chip.xwKey), crossWaiting.has(chip.xwKey))
+          const names = (wait) => sheetWallets().filter(([id]) => crossFailed.has(id) && crossWaiting.has(id) === wait).map(([, name]) => name).join(', ') || null
+          XW.guard.crossNote(crossNotes, names(false), false)
+          XW.guard.crossNote(crossNotes, names(true), true)
         } else {
           XW.guard.crossNote(crossNotes, null)
         }
@@ -3314,9 +3454,10 @@ const labelOf = (w) => w.label || (w.isStandard ? T.standard : w.name)
           if (sheetCross) {
             await verifyCrossWallets([wid])
             if (crossFailed.has(wid)) {
+              const wait = crossWaiting.has(wid)
               sheetSelected.delete(wid)
               renderAddresses()
-              return showNotice(XW.guard.T('blocked'), 'error')
+              return showNotice(XW.guard.T(wait ? 'blockedWait' : 'blocked'), wait ? '' : 'error')
             }
           } else if (!(await XW.guard.check(sheet, () => verifyFor(wid)))) {
             return XW.guard.blockedCopy(sheet, row)

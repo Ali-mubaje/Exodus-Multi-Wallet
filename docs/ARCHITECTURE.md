@@ -35,7 +35,42 @@ Exodus is an Electron app. Exodus Multi Wallet hooks in at two places:
   `../wallet-switcher/preload.js` during inlining.
 - Verifies the freshly built asar (payload files + a few unchanged files) **before** replacing the
   original.
-- `uninstall` simply restores `app.asar.orig`.
+- `uninstall` restores `app.asar.orig` (on macOS also the original code signature, see below).
+- Every external program runs through `sys.run` (no shell, absolute tool paths: `%SystemRoot%\System32\tasklist.exe`,
+  `/usr/bin/codesign`, `/usr/bin/xattr`, `/usr/libexec/PlistBuddy`, `/bin/ps`). If the "is Exodus running"
+  check itself fails, install/uninstall stop instead of assuming "not running".
+- `status --json` prints the state of the install that would be used (read by `update.js`);
+  `install --install-updater` also sets up the local updater (only passed by `update.js` after it
+  verified the release).
+
+### macOS code signature
+- Before the first patch, the original signature (main executable, gzipped, and
+  `Contents/_CodeSignature/CodeResources`) is backed up to `Contents/Resources/wallet-switcher-signature.orig/`.
+- Only the outer bundle is re-signed ad-hoc – **no `--deep`**, so frameworks and helpers keep Exodus' own
+  signatures: `codesign --force --sign - --preserve-metadata=entitlements [--options runtime]`. The Hardened
+  Runtime is kept only if the entitlements contain `com.apple.security.cs.disable-library-validation`
+  (otherwise an ad-hoc main executable could not load the Team-signed framework). Only the quarantine flag
+  is removed; the result is verified with `codesign --verify --strict`.
+- `uninstall` restores `app.asar`, the executable and `CodeResources`, removes the backup and checks with
+  `codesign --verify --deep --strict` that the original Developer ID signature is valid again.
+- While the sidebar is installed, Exodus' own auto-updater likely rejects updates (the designated
+  requirement names Exodus' Team ID) – the installer and README say so.
+
+### Signed releases and the updater (`update.js`, `tools/release.js`)
+- `tools/release.js --keygen <file>` creates the Ed25519 release key (private key outside the repo);
+  `--key <file>` writes `dist/release-manifest.json` (`name`, `version`, `commit`, SHA-256 of every file the
+  installer uses) and `dist/release-manifest.sig` (Ed25519 over the exact manifest bytes).
+- `update.js` pins the public key (`RELEASE_PUBLIC_KEY`). It downloads manifest + signature from GitHub
+  Releases (https only, ≤ 5 redirects, only `github.com` / `githubusercontent.com`, size limits, timeouts),
+  verifies them, fetches every file from `raw.githubusercontent.com` at the signed commit, checks each
+  SHA-256, shows *Installed → Available* and asks, refuses downgrades, then runs `install.js` from the
+  verified temp folder.
+- After installing, `install.js` copies the verified `update.js` (+ `update.cmd` / `update.sh`) to a per-user
+  folder (`%LOCALAPPDATA%\Exodus-Multi-Wallet`, `~/Library/Application Support/Exodus-Multi-Wallet`,
+  `~/.local/share/exodus-multi-wallet`). That local updater is the trust anchor for later updates.
+- `bootstrap.sh` / `bootstrap.ps1` only run the local updater, or – on the first install – download
+  `update.js` from the latest release (trust on first use; it checks that it is itself the `update.js` of the
+  signed release). Key rotation is not supported yet.
 
 ### Cross-platform detection
 
@@ -48,7 +83,8 @@ Exodus is an Electron app. Exodus Multi Wallet hooks in at two places:
 | Linux | `/opt/Exodus`, `/usr/lib/exodus`, … or `exodus` on `PATH` | `resources/app.asar` |
 
 `exodusRunning()` checks for a running Exodus (Windows: `tasklist`; posix: `ps`) so the installer can
-refuse to patch while the app is open.
+refuse to patch while the app is open. `status` checks only the install that would be used when called by
+the updater (`--json`), so an old `app-*` folder left by an Exodus update doesn't confuse the toggle.
 
 ## Main process (`payload/main.js`)
 
@@ -117,29 +153,45 @@ refuse to patch while the app is open.
   focused window like a payment – including the wallet's own window.
 
 ### Address Guard (integrity of the saved addresses)
+- **Shared key:** all wallets use ONE random 32-byte key, `Exodus-Wallets/seal.key`, so every window can
+  check every wallet. Windows: `XWD1` + DPAPI blob (current user, entropy `xw-seal-v2`), made through a
+  fixed PowerShell script – data only via stdin/stdout. macOS/Linux: `XWS1` + `safeStorage` (Keychain /
+  libsecret entry of the app, shared by all instances). No key store: plain `XWP1` + hex (logged). Each
+  process loads it once at startup (`sealKeyReady()`, ≤ 15 s) and again when the file changes. It is created
+  only if missing (temp file + hard link, fallback `wx`) and **never overwritten** because it can't be read –
+  only an explicit *Re-read* may replace an unreadable key. (Up to v1.0.2 every wallet had its own
+  `safeStorage` key; on Windows that is bound to the data folder's own Chromium key, so other windows
+  could not read it and silently skipped the check.)
 - **Seal:** when a wallet's own window saves its addresses (`fetchAddresses`), it stores
-  `addressesSeal: { v: 1, mac, at }` in `wallet-switcher-cache.json`. `mac` = HMAC-SHA256 over
-  `"xw-seal-v1\n"` + the sorted lines `account|asset|address`, keyed with a random 32-byte key per
-  wallet. The key lives in `wallet-switcher-seal.key` as `XWS1` + `safeStorage.encryptString(hex)`
-  (DPAPI / Keychain); only if the OS has no key store, as plain `XWP1` + hex.
-- **`checkSeal()`** → `ok` · `broken` (MAC wrong, seal removed while the key exists, or key removed while a
-  seal exists) · `none` (never sealed, e.g. from v1.0.2) · `unknown` (key not readable here, e.g. folder
-  copied from another computer).
-- **Comparison with Exodus** (own window, every address refresh, ~5 min): broken seal, or an unsealed
-  list that differs from Exodus → `addressGuard: { state:'tampered', reason:'seal'|'exodus', diffs }`; the
+  `addressesSeal: { v: 2, kid, mac, at }` in `wallet-switcher-cache.json`. `mac` = HMAC-SHA256 over
+  `"xw-seal-v2\n"` + the sorted lines `account|asset|address`; `kid` = first 16 hex of SHA-256(key).
+- **`checkSeal()`** → `none` (nothing saved) · `ok` · `broken` (malformed seal or wrong MAC) · `unverified`
+  (no seal, an old v1 seal, another `kid`, key missing/unreadable/still loading). **Only `ok` passes**
+  ("fail closed"): `broken` → red *tampered*; `unverified` → calm amber *Not confirmed yet*, copying and
+  export paused, with *Re-read* (opening the wallet does it too).
+- **Comparison with Exodus** (own window, every address refresh, ~5 min): broken seal, or a list that
+  isn't `ok` and differs from Exodus → `addressGuard: { state:'tampered', reason:'seal'|'exodus', diffs }`; the
   saved list is **not** overwritten (evidence) and stays blocked until *Re-read*. Seal intact but Exodus
-  shows another address → `{ state:'changed', changes }` (state E) and the new list is sealed.
+  shows another address → `{ state:'changed', changes }` (state E) and the new list is sealed. Otherwise
+  the list is (re)sealed with v2. **Migration:** a v1 seal is checked by the wallet's own window with its
+  old per-wallet key; after the first v2 seal `wallet-switcher-seal.key` is deleted.
 - **IPC** (all behind the origin/session check): `verifyAddresses(id)` → `{ ok, reason, diffs, changes }`
   (seal + recorded comparison, no Exodus round trip, so it is instant before every copy) ·
   `rereadAddresses(id)` (own window directly; another window via the `reread` command with progress in
   `wallet-switcher-reread.json`; a stopped wallet is started in the background first; progress reaches
   the sidebar as `exodus-wallets:reread-progress` `{i,n}` from `globalThis.__xwAddrProgress`) ·
-  `readClipboard` · `clearClipboard` · `isOwnAddress(addr)` (only wallets that pass the check count) ·
-  `systemNotify({title, body})`. `copyAddress` itself refuses a failed wallet.
+  `readClipboard` · `clearClipboard` · `isOwnAddress(addr)` (only verified wallets count) ·
+  `systemNotify({title, body})`. `copyAddress` refuses a wallet that isn't verified, and `copyText` (export)
+  only accepts lines that are addresses of verified wallets.
+- **Settings:** `addressCheck` / `clipboardGuard` in `settings.json` (default on; the seal is always
+  maintained). "Off" only counts with `guardMac` = HMAC(shared key, `xw-settings-v1\n<addressCheck>|<clipboardGuard>`),
+  which only the gear menu writes. An unsigned "off" (another program, or an older version) is ignored –
+  the protection stays on, the sidebar says so once per session (`guardIgnored` in the state) and one log
+  line is written. While a protection is legitimately off, an amber pill under the header shows it.
 - **Renderer:** the design handoff's `xw-guard.js` / `xw-guard.prod.css` are inlined as `XW.guard` and `@xw:guard` (seal in the sheet sub
-  line, banner, locked rows/export, details layer, clipboard card); `preload.js` calls `XW.guard.check()`
-  before showing/copying/exporting and `XW.guard.watchClipboard()` after copying. Settings:
-  `addressCheck` / `clipboardGuard` in `settings.json` (default on; the seal is always maintained).
+  line, banner, locked rows/export, details layer, clipboard card, plus the `unverified` state);
+  `preload.js` calls `XW.guard.check()` before showing/copying/exporting and `XW.guard.watchClipboard()`
+  after copying.
 
 ### Incoming-payment notifications
 - **Detect (every window, for its own wallet):** `HOLDINGS_JS` reads the coin amount per portfolio and
@@ -260,13 +312,14 @@ refuse to patch while the app is open.
 | `wallet-switcher-pause` | do not start in the background until this timestamp |
 | `wallet-switcher-bgstart` | last background start (prevents double starts) |
 | `wallet-switcher-place.json` | window place/size handed over by *Switch* (used once) |
-| `wallet-switcher-seal.key` | Address Guard key, encrypted by the OS key store |
+| `wallet-switcher-seal.key` | old per-wallet Address Guard key (v1) – deleted after the move to the shared key |
 | `wallet-switcher-reread.json` | progress/result of a *Re-read from Exodus* asked for by another window |
 | `wallet-switcher-nobackground` | this wallet is excluded from background sync |
 
 Global, under `Exodus-Wallets`: `settings.json` (settings incl. start wallet, default-wallet
-display name), `imported.log` (adopted old folders) and `.incoming/` (short-lived incoming-payment
-events and their `.done` claims, pruned after ~10 min).
+display name, `guardMac`), `seal.key` (the shared Address Guard key, protected by DPAPI / Keychain),
+`imported.log` (adopted old folders) and `.incoming/` (short-lived incoming-payment events and their
+`.done` claims, pruned after ~10 min).
 
 ## Adapting to a new Exodus version
 

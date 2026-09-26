@@ -9,7 +9,7 @@ gradient. It automatically picks up the active Exodus theme as well as the langu
 
 > **In short:** a wallet switcher that looks and feels like it shipped with Exodus.
 
-**Version 1.0.2** · tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** · Linux: should
+**Version 1.1.0** · tested with **Exodus 26.8.27 on Windows** and **26.8.26 on macOS** · Linux: should
 work but not yet tested against a specific version.
 
 <p align="center">
@@ -43,8 +43,11 @@ work but not yet tested against a specific version.
 - **Address Guard** – protects the saved receive addresses against "clipper" malware, which swaps crypto
   addresses so payments go to the attacker:
   - **Integrity seal** – when a wallet saves its addresses, they are sealed (HMAC-SHA256 over all of
-    them, with a key kept by the operating system: Windows DPAPI / macOS Keychain). Before every show,
-    copy and export the seal is checked (*Verified · 2 min ago* in the address view).
+    them, with one key for all wallets kept by the operating system: Windows DPAPI / macOS Keychain).
+    Before every show, copy and export the seal is checked (*Verified · 2 min ago* in the address view) –
+    from every window, for every wallet. Only a seal that verifies counts: addresses that can't be
+    confirmed yet (e.g. right after an update, before the wallet has compared them with Exodus) show a
+    calm *Not confirmed yet* and copying is paused until *Re-read from Exodus* (or opening the wallet).
   - **Match with Exodus** – each running wallet regularly re-reads its addresses from Exodus and
     compares. If the saved addresses were changed or don't match Exodus, copying and export are blocked
     for that wallet, a red banner explains it (*Show details*: saved vs. Exodus, difference highlighted)
@@ -55,7 +58,10 @@ work but not yet tested against a specific version.
     isn't one of yours appears, a persistent warning shows up (plus a system notification, never with
     the address) – with a special view for "lookalike" addresses that keep the start and end.
     Copying something else yourself, switching apps or copying one of your own addresses never triggers it.
-  - Both checks are **on by default** and can be switched off in the settings (⚙).
+  - Both checks are **on by default** and can be switched off in the settings (⚙) – only there: the
+    switches are signed with the seal key, so another program editing the settings file can't turn them
+    off (the sidebar tells you if that was tried). While a check is off, an amber note under the header
+    says so.
 - **Incoming-payment notifications** – when another wallet receives funds, the Exodus window you're
   working in shows a small card at the top left: coin (with the original Exodus icon), amount, value at
   the time it arrived, wallet and portfolio – together with Exodus' own receive sound, in the same moment.
@@ -104,7 +110,7 @@ work but not yet tested against a specific version.
 ## Quick install (one line)
 
 **Requirements:** [Node.js](https://nodejs.org/) and the Exodus desktop app. **Quit Exodus first.**
-These commands download the tool and install the sidebar – run again to uninstall it (toggle).
+These commands install the sidebar from the latest **signed release** – run again to uninstall it (toggle).
 
 **Windows (PowerShell):**
 
@@ -118,25 +124,69 @@ irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootst
 curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.sh | sh
 ```
 
+The script only downloads the updater (`update.js`) from the latest GitHub release and runs it. The
+updater checks the release signature and every file (see [What gets verified](#what-gets-verified)),
+shows which version it is about to install and asks before changing anything. After the install it
+keeps a copy of itself on your computer – the **local updater** – which you use for all later updates.
+
 > These fetch and run a script from this repository. That's convenient but powerful – only paste a
 > `curl … | sh` / `irm … | iex` command from a source you trust, and feel free to open
 > [`bootstrap.sh`](bootstrap.sh) / [`bootstrap.ps1`](bootstrap.ps1) first to see exactly what they do.
+> The one-liner is meant for the **first install** only: it trusts whatever the repository serves at
+> that moment. Updates should go through the local updater below.
 
 ### Update to the latest version
 
-Fetches the newest version and re-installs it (also use this after an Exodus update). Quit Exodus first.
+Run the **local updater** that the first install set up (also after every Exodus update). Quit Exodus
+first. It checks every release with the release key it already has, so a changed script or a
+compromised account on GitHub can't slip anything past it.
 
-**Windows (PowerShell):**
+| OS | Command |
+|---|---|
+| Windows (PowerShell) | `& "$env:LOCALAPPDATA\Exodus-Multi-Wallet\update.cmd"` |
+| Windows (cmd) | `"%LOCALAPPDATA%\Exodus-Multi-Wallet\update.cmd"` |
+| macOS | `sh ~/Library/Application\ Support/Exodus-Multi-Wallet/update.sh` |
+| Linux | `sh ~/.local/share/exodus-multi-wallet/update.sh` |
 
-```powershell
-$env:EMW_ACTION='update'; irm https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.ps1 | iex
-```
+It shows something like `Installed: v1.1.0 → Available: v1.1.1 (commit abc1234)` and asks before
+installing. Options (after the command):
 
-**macOS / Linux:**
+| Option | What it does |
+|---|---|
+| `update` *(default)* | install the latest release unless it is already installed |
+| `install` | install / reinstall the release |
+| `uninstall` | remove the sidebar |
+| `status` | show what is installed and which release is available |
+| `--version v1.2.3` | use that release instead of the latest |
+| `--yes` | don't ask |
+| `--allow-downgrade` | allow a release older than the installed one (refused otherwise) |
+| `--app "<path>"` | use a specific Exodus install |
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main/bootstrap.sh | sh -s -- update
-```
+The one-liners still work for updates too (`$env:EMW_ACTION='update'; irm … | iex` on Windows,
+`curl … | sh -s -- update` on macOS/Linux) – they simply hand over to the local updater if it exists.
+Running the local updater directly is safer, because the one-liner script itself comes fresh from
+GitHub each time.
+
+### What gets verified
+
+- Every release has a **manifest** (`release-manifest.json`: version, exact commit and the SHA-256 of
+  every file the installer uses) with an **Ed25519 signature** (`release-manifest.sig`). The public key
+  is pinned inside `update.js`; the private key is kept offline by the maintainer.
+- The updater downloads the manifest and signature from GitHub Releases – https only, at most 5
+  redirects and only to `github.com` / `githubusercontent.com` – and checks the signature with the pinned
+  key.
+- It then downloads each file from `raw.githubusercontent.com` **at exactly the signed commit** and
+  checks its SHA-256. Any mismatch aborts, and nothing is installed.
+- It refuses to install an older version than the one installed (unless `--allow-downgrade`).
+- `install.js` from those verified files does the install, then replaces the local updater with the
+  verified `update.js` of that release – so a new updater only lands on your computer after it passed
+  the check with the old key.
+- **First install (trust on first use):** the one-liner downloads `update.js` from the latest release.
+  It verifies the release with the key it carries and checks that it is itself the `update.js` listed in
+  that signed manifest. To check it by hand, compare the fingerprint it prints (`release key …`) with the
+  one in the release notes and here – **release key fingerprint:** `f506 5a02 2274 b91b b9bc f8fc 2fb2 466c`.
+- **Key rotation isn't supported yet.** If the release key ever had to change, you would have to delete
+  the local updater folder and do a fresh first install with the one-liner.
 
 ---
 
@@ -145,7 +195,9 @@ curl -fsSL https://raw.githubusercontent.com/Ali-mubaje/Exodus-Multi-Wallet/main
 **Requirements:** [Node.js](https://nodejs.org/) and the Exodus desktop app. Works on **Windows,
 macOS and Linux**. No `npm install` needed – the installer only uses Node's built-ins.
 
-Get the files (clone the repo or download it), so `install.js` and the `payload/` folder sit together:
+Get the files (clone the repo or download it), so `install.js` and the `payload/` folder sit together.
+A manual install uses exactly the files you have – no signature check happens and no local updater is
+set up (use the one-liner above for that):
 
 ```
 exodus-multi-wallet/
@@ -177,20 +229,25 @@ After it finishes, start Exodus – the wallet button is at the top left, before
 
 ### Uninstall
 
-Restores the original Exodus from the automatic backup:
+Restores the original Exodus from the automatic backup (on macOS including Exodus' original code
+signature – see [Platform notes](#platform-notes)):
 
-| OS | Command | Or |
-|---|---|---|
-| Windows | `node install.js uninstall` | double-click `uninstall.cmd` |
-| macOS / Linux | `node install.js uninstall` | `sh uninstall.sh` |
+| Installed with | Command |
+|---|---|
+| the one-liner (local updater) | the local updater with `uninstall`, e.g. `& "$env:LOCALAPPDATA\Exodus-Multi-Wallet\update.cmd" uninstall` or `sh ~/.local/share/exodus-multi-wallet/update.sh uninstall` – or run the one-liner again (toggle) |
+| a clone, Windows | `node install.js uninstall`, or double-click `uninstall.cmd` |
+| a clone, macOS / Linux | `node install.js uninstall`, or `sh uninstall.sh` |
 
-Your wallets are kept (in the Exodus-Wallets folder in your app-data directory).
+Your wallets are kept (in the Exodus-Wallets folder in your app-data directory). The local updater stays
+in its folder so a later reinstall keeps the same release key; delete that folder
+(`%LOCALAPPDATA%\Exodus-Multi-Wallet`, `~/Library/Application Support/Exodus-Multi-Wallet` or
+`~/.local/share/exodus-multi-wallet`) to remove it too.
 
 ### Other commands
 
 | Command | What it does |
 |---|---|
-| `node install.js status` | For each detected Exodus install, show whether the sidebar is active |
+| `node install.js status` | For each detected Exodus install, show whether the sidebar is active (on macOS also which signature the app carries) |
 | `node install.js install --app "<path>"` | Use a specific Exodus install instead of auto-detecting |
 
 Where Exodus is looked for automatically:
@@ -201,8 +258,8 @@ Where Exodus is looked for automatically:
 | macOS | `/Applications/Exodus.app/Contents/Resources/app.asar` |
 | Linux | `/opt/Exodus/resources/app.asar` (and other common paths, or `exodus` on `PATH`) |
 
-> **After every Exodus update**, run `install` again – the update replaces the `app.asar` that the
-> add-on patches. Your wallets are not affected.
+> **After every Exodus update**, run the local updater (or `install`) again – the update replaces the
+> `app.asar` that the add-on patches. Your wallets are not affected.
 
 ---
 
@@ -212,23 +269,37 @@ The installer is fully cross-platform. The runtime add-on works on all three sys
 Windows-only conveniences that simply don't appear elsewhere:
 
 - **Desktop shortcuts** (`.lnk`) are Windows-only; the menu entry is hidden on macOS/Linux.
-- **macOS code signing:** Exodus is a signed/notarized app, so changing `app.asar` makes macOS report
-  *“Exodus is damaged and can’t be opened.”* The installer fixes this automatically by **re-signing the
-  app ad-hoc** after patching (this replaces Apple’s signature with a local one; reinstalling Exodus
-  from the official DMG restores the original). If the automatic step ever fails, quit Exodus and run
-  once in Terminal (with `sudo`, and adjust the path if Exodus is not in `/Applications`):
-  ```sh
-  sudo xattr -rd com.apple.quarantine /Applications/Exodus.app
-  sudo codesign --force --deep --sign - /Applications/Exodus.app
-  ```
-  **First launch on macOS (expected once):** because the app is now ad-hoc signed, macOS shows a
-  security prompt the first time. Open **System Settings → Privacy & Security**, click **“Open Anyway”**,
-  then start Exodus again and click **“Open”**. After that it launches normally every time.
+- **macOS code signing:** Exodus is signed with Exodus' Developer ID and notarized, so changing
+  `app.asar` makes macOS report *“Exodus is damaged and can’t be opened.”* The installer handles this:
+  - Before the first change it **backs up Exodus' original signature** (the main executable and
+    `Contents/_CodeSignature/CodeResources`) to `Contents/Resources/wallet-switcher-signature.orig/`,
+    next to `app.asar.orig`.
+  - It then **re-signs only the outer app bundle** locally (ad-hoc, no `--deep`): the frameworks and
+    helpers inside keep Exodus' own signatures, Exodus' entitlements are kept, and the Hardened Runtime
+    is kept when Exodus' entitlements allow it (otherwise the installer says so). It verifies the result
+    and removes only the quarantine flag.
+  - **Uninstall** puts back `app.asar`, the executable and `CodeResources`, removes the backup and checks
+    with `codesign --verify --deep --strict` that Exodus' original signature is valid again. If it
+    isn't (e.g. the sidebar was installed by an older version of this tool, which re-signed everything),
+    reinstall Exodus from [exodus.com](https://www.exodus.com/download/) – your wallets are not affected.
+  - `node install.js status` (or the local updater with `status`) shows whether the app currently carries
+    **Exodus' original Developer ID signature** or the **local ad-hoc** one.
 
-  To check the quarantine flag is gone, this should print nothing:
+  If the automatic re-sign ever fails, quit Exodus and run once in Terminal (adjust the path if Exodus is
+  not in `/Applications`; add `sudo` only if the app belongs to another user):
   ```sh
-  xattr -r /Applications/Exodus.app | grep quarantine
+  xattr -dr com.apple.quarantine /Applications/Exodus.app
+  codesign --force --sign - --preserve-metadata=entitlements /Applications/Exodus.app
   ```
+- **Exodus updates on macOS:** while the sidebar is installed, Exodus' **built-in auto-update may not
+  work** – the app is signed locally instead of with Exodus' Team ID, so the updater is likely to reject
+  genuine updates. Update Exodus by downloading it from [exodus.com](https://www.exodus.com/download/)
+  and installing it over the old one, then run the local updater (or the installer) again.
+- **First launch after installing (macOS):** macOS may show a security prompt once. Open **System
+  Settings → Privacy & Security**, click **“Open Anyway”**, then start Exodus again and click **“Open”**.
+  **This is only expected right after you ran this installer.** Never click “Open Anyway” (or re-sign
+  anything) for an Exodus you just downloaded – a genuine Exodus from exodus.com opens without it. If a
+  fresh download is reported as damaged, delete it and download it again from exodus.com.
 - **macOS background sync:** background wallets are hidden from the Dock. macOS may throttle apps
   without a visible window (App Nap), so on a Mac background wallets can update more slowly than on
   Windows.
@@ -266,8 +337,10 @@ these.
 - Background sync starts the normal Exodus app for each wallet, just without showing its window – it
   never enters or stores passwords; a password-protected wallet stays locked until you unlock it.
 - **Address Guard:** saved receive addresses are sealed with an HMAC whose key is protected by the
-  operating system (DPAPI / Keychain via Electron `safeStorage`) and checked before every copy; the
-  main process refuses to copy from a wallet that failed the check. The clipboard is only read for ~2 s
+  operating system (Windows DPAPI for your user account / Keychain via Electron `safeStorage`) and checked
+  before every copy and export; the main process refuses to copy or export addresses that aren't verified
+  ("fail closed"). The protection switches can only be turned off in the sidebar's settings (signed with
+  the same key). The clipboard is only read for ~2 s
   right after you copy, only to compare – its contents are never stored, logged or sent anywhere, and
   warnings never contain addresses. Limits: malware running as your user with full control could in
   principle also use the OS key store – the comparison with Exodus is the second line of defence, and
@@ -275,6 +348,9 @@ these.
 - “Show 12 words” only opens Exodus' own backup screen – Exodus handles the password prompt.
 - Delete means **trash/recycle bin**, never a hard delete. If moving to the bin fails, nothing happens.
 - Actions only accept calls from the real Exodus UI (verified origin and session).
+- **Installs and updates are signed:** the updater only installs a release whose manifest verifies with
+  the pinned Ed25519 release key and whose every file matches its SHA-256 (see
+  [What gets verified](#what-gets-verified)).
 
 > ⚠️ Still: always back up your 12 words. They are the only way to recover a wallet if a data folder
 > is lost.
@@ -296,6 +372,49 @@ stays byte for byte identical; the original is kept as `app.asar.orig`.
   result before replacing anything, and can cleanly uninstall.
 
 More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## For maintainers: publishing a signed release
+
+Releases are signed with an Ed25519 key. [`tools/release.js`](tools/release.js) (pure Node) does the
+signing; it never publishes anything itself.
+
+**Once – create the release key:**
+
+```sh
+node tools/release.js --keygen /path/outside/the/repo/exodus-multi-wallet-release.pem
+```
+
+It refuses paths inside the repository, never overwrites an existing key, and restricts the file's
+permissions. Keep the private key **offline** (e.g. an encrypted USB stick) and backed up: anyone who
+has it can publish updates that every updater accepts, and if it is lost no further update can be
+signed. Paste the printed public key into `RELEASE_PUBLIC_KEY` in [`update.js`](update.js) (the
+updater refuses to run while it holds the placeholder), put the printed fingerprint into
+[What gets verified](#what-gets-verified), and commit.
+
+**Every release:**
+
+1. Bump `VERSION` in `payload/main.js`, commit and **push** (the updater downloads the files from
+   `raw.githubusercontent.com` at exactly the release commit).
+2. On a clean checkout of that commit:
+   ```sh
+   node tools/release.js --key /path/outside/the/repo/exodus-multi-wallet-release.pem
+   ```
+   It refuses a dirty working tree and a key that doesn't match the pinned public key, reads the version
+   from `payload/main.js`, hashes the committed files (`install.js`, `update.js`, `payload/*`) and writes
+   `dist/release-manifest.json`, `dist/release-manifest.sig` and `dist/update.js` (`dist/` is ignored by
+   git).
+3. Review and run the `gh release create v<version> dist/release-manifest.json dist/release-manifest.sig
+   dist/update.js --target <commit> …` command it prints. Mark it as the latest release – the one-liners
+   and the updater use `releases/latest`.
+
+Notes:
+
+- The one-liners on `main` only work once at least one signed release exists; publish the first release
+  right after pushing the new `bootstrap.*` / `update.js`.
+- **Key rotation is not supported yet.** A new key means every user has to delete the local updater
+  folder and install again with the one-liner (trust on first use). Guard the key accordingly.
 
 ---
 
